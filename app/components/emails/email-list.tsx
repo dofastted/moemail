@@ -144,6 +144,7 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
   const emailsRef = useRef<Email[]>([])
   const nextCursorRef = useRef<string | null>(null)
   const totalRef = useRef<number | null>(null)
+  const filterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     emailsRef.current = emails
@@ -297,6 +298,23 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
     setAppliedDomainSuffix(DEFAULT_DOMAIN)
   }, [])
 
+  useEffect(() => {
+    if (filterTimerRef.current) {
+      clearTimeout(filterTimerRef.current)
+    }
+
+    filterTimerRef.current = setTimeout(() => {
+      setAppliedSearchText(searchText.trim())
+      setAppliedDomainSuffix(domainSuffix.trim())
+    }, 250)
+
+    return () => {
+      if (filterTimerRef.current) {
+        clearTimeout(filterTimerRef.current)
+      }
+    }
+  }, [domainSuffix, searchText])
+
   const handleRefresh = async () => {
     await fetchEmails({
       reset: true,
@@ -429,8 +447,8 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
         </div>
 
         <div className="border-b border-primary/10 p-2 space-y-2">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-            <div className="relative flex-1 min-w-0">
+          <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_220px]">
+            <div className="relative min-w-0">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={searchText}
@@ -445,7 +463,7 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
                 className="w-full min-w-0 pl-9"
               />
             </div>
-            <div className="w-full min-w-0 lg:w-[220px]">
+            <div className="w-full min-w-0">
               <Input
                 value={domainSuffix}
                 onChange={(e) => setDomainSuffix(e.target.value)}
@@ -459,21 +477,21 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
                 className="w-full min-w-0"
               />
             </div>
-            <div className="flex gap-2 lg:flex-none">
-              <Button onClick={applyFilters} className="flex-1" size="sm">
-                <Filter className="size-4" />
-                {t("applyFilter")}
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={clearFilters}
-                disabled={!searchText && !domainSuffix && !appliedSearchText && !appliedDomainSuffix}
-                className="shrink-0"
-              >
-                <X className="size-4" />
-              </Button>
-            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <Button onClick={applyFilters} size="sm" className="shrink-0">
+              <Filter className="size-4" />
+              {t("applyFilter")}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={clearFilters}
+              disabled={!searchText && !domainSuffix && !appliedSearchText && !appliedDomainSuffix}
+              className="shrink-0"
+            >
+              <X className="size-4" />
+            </Button>
           </div>
         </div>
 
