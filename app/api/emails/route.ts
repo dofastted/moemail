@@ -7,13 +7,26 @@ import { getUserId } from "@/lib/apiKey"
 
 export const runtime = "edge"
 
-const PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 100
+
+function escapeLike(value: string) {
+  return value.replace(/[\\%_]/g, "\\$&")
+}
 
 export async function GET(request: Request) {
   const userId = await getUserId()
 
   const { searchParams } = new URL(request.url)
   const cursor = searchParams.get('cursor')
+  const search = searchParams.get("search")?.trim() || ""
+  const domain = searchParams.get("domain")?.trim() || ""
+  const includeTotal = searchParams.get("includeTotal") !== "0"
+  const limitParam = Number(searchParams.get("limit"))
+  const pageSize = Number.isFinite(limitParam) && limitParam > 0
+    ? Math.min(limitParam, 200)
+    : DEFAULT_PAGE_SIZE
+  const searchTerm = search.toLowerCase()
+  const domainTerm = domain.toLowerCase()
   
   const db = createDb()
 
@@ -23,12 +36,28 @@ export async function GET(request: Request) {
       gt(emails.expiresAt, new Date())
     )
 
-    const totalResult = await db.select({ count: sql<number>`count(*)` })
-      .from(emails)
-      .where(baseConditions)
-    const totalCount = Number(totalResult[0].count)
-
     const conditions = [baseConditions]
+
+    if (searchTerm) {
+      const keyword = `%${escapeLike(searchTerm)}%`
+      conditions.push(or(
+        sql`LOWER(${emails.id}) LIKE ${keyword} ESCAPE '\\'`,
+        sql`LOWER(${emails.address}) LIKE ${keyword} ESCAPE '\\'`,
+        sql`LOWER(CAST(${emails.createdAt} AS TEXT)) LIKE ${keyword} ESCAPE '\\'`,
+        sql`LOWER(CAST(${emails.expiresAt} AS TEXT)) LIKE ${keyword} ESCAPE '\\'`
+      ))
+    }
+
+    if (domainTerm) {
+      const domainKeyword = `%${escapeLike(domainTerm.replace(/^@/, ""))}`
+      conditions.push(sql`LOWER(SUBSTR(LOWER(${emails.address}), INSTR(LOWER(${emails.address}), '@') + 1)) LIKE ${domainKeyword} ESCAPE '\\'`)
+    }
+
+    const totalCount = includeTotal
+      ? Number((await db.select({ count: sql<number>`count(*)` })
+          .from(emails)
+          .where(and(...conditions)))[0].count)
+      : null
 
     if (cursor) {
       const { timestamp, id } = decodeCursor(cursor)
@@ -49,22 +78,23 @@ export async function GET(request: Request) {
         desc(emails.createdAt),
         desc(emails.id)
       ],
-      limit: PAGE_SIZE + 1
+      limit: pageSize + 1
     })
     
-    const hasMore = results.length > PAGE_SIZE
+    const hasMore = results.length > pageSize
     const nextCursor = hasMore 
       ? encodeCursor(
-          results[PAGE_SIZE - 1].createdAt.getTime(),
-          results[PAGE_SIZE - 1].id
+          results[pageSize - 1].createdAt.getTime(),
+          results[pageSize - 1].id
         )
       : null
-    const emailList = hasMore ? results.slice(0, PAGE_SIZE) : results
+    const emailList = hasMore ? results.slice(0, pageSize) : results
 
     return NextResponse.json({ 
       emails: emailList,
       nextCursor,
-      total: totalCount
+      total: totalCount,
+      hasMore
     })
   } catch (error) {
     console.error('Failed to fetch user emails:', error)
