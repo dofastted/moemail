@@ -20,7 +20,7 @@
     "emailCountUnlimited": "{count}/∞ 이메일",
     "loading": "로딩 중...",
     "loadingMore": "더 불러오는 중...",
-    "searchPlaceholder": "메일함 이름 또는 전체 주소 검색",
+    "searchPlaceholder": "메일함 이름, 전체 주소, ID 검색",
     "domainPlaceholder": "도메인 접미사로 필터, 예: moemail.app",
     "applyFilter": "필터",
     "noFilteredEmails": "조건에 맞는 이메일이 없습니다",

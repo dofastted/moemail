@@ -429,8 +429,8 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
         </div>
 
         <div className="border-b border-primary/10 p-2 space-y-2">
-          <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1fr)_220px_auto]">
-            <div className="relative">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+            <div className="relative flex-1 min-w-0">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={searchText}
@@ -442,10 +442,10 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
                   }
                 }}
                 placeholder={t("searchPlaceholder")}
-                className="pl-9"
+                className="w-full min-w-0 pl-9"
               />
             </div>
-            <div className="relative">
+            <div className="w-full min-w-0 lg:w-[220px]">
               <Input
                 value={domainSuffix}
                 onChange={(e) => setDomainSuffix(e.target.value)}
@@ -456,9 +456,10 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
                   }
                 }}
                 placeholder={t("domainPlaceholder")}
+                className="w-full min-w-0"
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 lg:flex-none">
               <Button onClick={applyFilters} className="flex-1" size="sm">
                 <Filter className="size-4" />
                 {t("applyFilter")}

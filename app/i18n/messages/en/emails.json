@@ -20,7 +20,7 @@
     "emailCountUnlimited": "{count}/∞ emails",
     "loading": "Loading...",
     "loadingMore": "Loading more...",
-    "searchPlaceholder": "Search mailbox name or full address",
+    "searchPlaceholder": "Search mailbox name, full address, or ID",
     "domainPlaceholder": "Filter by domain suffix, for example moemail.app",
     "applyFilter": "Filter",
     "noFilteredEmails": "No emails matched the filters",
