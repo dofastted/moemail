@@ -50,7 +50,7 @@ export async function GET(request: Request) {
 
     if (domainTerm) {
       const domainKeyword = `%${escapeLike(domainTerm.replace(/^@/, ""))}`
-      conditions.push(sql`LOWER(SUBSTR(LOWER(${emails.address}), INSTR(LOWER(${emails.address}), '@') + 1)) LIKE ${domainKeyword} ESCAPE '\\'`)
+      conditions.push(sql`SUBSTR(LOWER(${emails.address}), INSTR(LOWER(${emails.address}), '@') + 1) LIKE ${domainKeyword} ESCAPE '\\'`)
     }
 
     const totalCount = includeTotal

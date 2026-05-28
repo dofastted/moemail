@@ -51,7 +51,6 @@ export const emails = sqliteTable("email", {
   expiresAtIdx: index("email_expires_at_idx").on(table.expiresAt),
   userIdIdx: index("email_user_id_idx").on(table.userId),
   addressLowerIdx: index("email_address_lower_idx").on(sql`LOWER(${table.address})`),
-  addressDomainIdx: index("email_address_domain_idx").on(sql`SUBSTR(LOWER(${table.address}), INSTR(LOWER(${table.address}), '@') + 1)`),
 }))
 
 export const messages = sqliteTable("message", {
