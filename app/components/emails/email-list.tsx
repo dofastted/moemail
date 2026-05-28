@@ -50,10 +50,76 @@ type LoadOptions = {
   cursor?: string | null
   includeTotal?: boolean
   prefetch?: boolean
+  preserveExisting?: boolean
 }
 
 const DEFAULT_SEARCH = ""
 const DEFAULT_DOMAIN = ""
+const EMAIL_LIST_CACHE_VERSION = 1
+const EMAIL_LIST_CACHE_PREFIX = "moemail:email-list"
+const EMAIL_LIST_CACHE_REFRESH_INTERVAL = 60_000
+
+interface CachedEmailList {
+  version: number
+  emails: Email[]
+  nextCursor: string | null
+  total: number | null
+  savedAt: number
+}
+
+function createCacheKey(userKey: string, search: string, domain: string) {
+  return [
+    EMAIL_LIST_CACHE_PREFIX,
+    EMAIL_LIST_CACHE_VERSION,
+    encodeURIComponent(userKey),
+    encodeURIComponent(search),
+    encodeURIComponent(domain),
+  ].join(":")
+}
+
+function readEmailCache(cacheKey: string): CachedEmailList | null {
+  try {
+    const raw = window.localStorage.getItem(cacheKey)
+    if (!raw) return null
+
+    const cached = JSON.parse(raw) as CachedEmailList
+    if (cached.version !== EMAIL_LIST_CACHE_VERSION || !Array.isArray(cached.emails)) {
+      window.localStorage.removeItem(cacheKey)
+      return null
+    }
+
+    return cached
+  } catch {
+    return null
+  }
+}
+
+function writeEmailCache(cacheKey: string, cache: Omit<CachedEmailList, "version" | "savedAt">) {
+  try {
+    window.localStorage.setItem(cacheKey, JSON.stringify({
+      version: EMAIL_LIST_CACHE_VERSION,
+      savedAt: Date.now(),
+      ...cache,
+    }))
+  } catch {
+    // localStorage may be full or disabled. The in-memory list still works.
+  }
+}
+
+function mergeEmails(current: Email[], incoming: Email[], replace = false) {
+  const merged = replace ? [] : [...current]
+  const seen = new Set(merged.map(email => email.id))
+
+  for (const email of incoming) {
+    if (seen.has(email.id)) {
+      continue
+    }
+    seen.add(email.id)
+    merged.push(email)
+  }
+
+  return merged
+}
 
 export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
   const { data: session } = useSession()
@@ -76,6 +142,8 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
   const { toast } = useToast()
   const requestIdRef = useRef(0)
   const emailsRef = useRef<Email[]>([])
+  const nextCursorRef = useRef<string | null>(null)
+  const totalRef = useRef<number | null>(null)
 
   useEffect(() => {
     emailsRef.current = emails
@@ -88,6 +156,10 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
 
   const visibleEmails = emails
   const totalCount = total ?? emails.length
+  const cacheKey = useMemo(() => {
+    const userKey = session?.user?.email || session?.user?.name || "anonymous"
+    return createCacheKey(userKey, appliedSearchText.trim(), appliedDomainSuffix.trim())
+  }, [appliedDomainSuffix, appliedSearchText, session?.user?.email, session?.user?.name])
 
   const buildUrl = useCallback((cursor?: string | null, includeTotal = true) => {
     const url = new URL("/api/emails", window.location.origin)
@@ -107,24 +179,13 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
     return url
   }, [appliedDomainSuffix, appliedSearchText])
 
-  const appendEmails = useCallback((incoming: Email[], replace = false) => {
-    setEmails(prev => {
-      const current = replace ? [] : prev
-      const merged = [...current]
-      const seen = new Set(current.map(email => email.id))
-
-      for (const email of incoming) {
-        if (seen.has(email.id)) {
-          continue
-        }
-        seen.add(email.id)
-        merged.push(email)
-      }
-
-      emailsRef.current = merged
-      return merged
+  const saveCache = useCallback((items: Email[], cursor: string | null, count: number | null) => {
+    writeEmailCache(cacheKey, {
+      emails: items,
+      nextCursor: cursor,
+      total: count,
     })
-  }, [])
+  }, [cacheKey])
 
   const prefetchEmails = useCallback(async (startCursor: string | null, requestId: number) => {
     let currentCursor = startCursor
@@ -139,8 +200,12 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
           return
         }
 
-        appendEmails(data.emails, false)
+        const merged = mergeEmails(emailsRef.current, data.emails)
+        emailsRef.current = merged
+        setEmails(merged)
+        nextCursorRef.current = data.nextCursor
         setNextCursor(data.nextCursor)
+        saveCache(merged, data.nextCursor, totalRef.current)
         currentCursor = data.nextCursor
       } catch (error) {
         if (requestIdRef.current === requestId) {
@@ -149,19 +214,32 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
         return
       }
     }
-  }, [appendEmails, buildUrl])
+  }, [buildUrl, saveCache])
 
   const fetchEmails = useCallback(async (options: LoadOptions = {}) => {
-    const { reset = false, cursor = null, includeTotal = true, prefetch = false } = options
+    const {
+      reset = false,
+      cursor = null,
+      includeTotal = true,
+      prefetch = false,
+      preserveExisting = false,
+    } = options
     const requestId = ++requestIdRef.current
 
     if (reset) {
-      setLoading(true)
       setListError(null)
-      setEmails([])
-      emailsRef.current = []
-      setNextCursor(null)
-      setTotal(null)
+      if (preserveExisting) {
+        setLoading(false)
+        setRefreshing(true)
+      } else {
+        setLoading(true)
+        setEmails([])
+        emailsRef.current = []
+        setNextCursor(null)
+        nextCursorRef.current = null
+        setTotal(null)
+        totalRef.current = null
+      }
     } else if (cursor) {
       setLoadingMore(true)
     } else {
@@ -177,11 +255,18 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
         return
       }
 
-      appendEmails(data.emails, reset)
+      const merged = mergeEmails(emailsRef.current, data.emails, reset && !preserveExisting)
+      emailsRef.current = merged
+      setEmails(merged)
+      nextCursorRef.current = data.nextCursor
       setNextCursor(data.nextCursor)
+      let nextTotal = totalRef.current
       if (typeof data.total === "number") {
+        nextTotal = data.total
+        totalRef.current = data.total
         setTotal(data.total)
       }
+      saveCache(merged, data.nextCursor, nextTotal)
 
       if (prefetch && !cursor && data.hasMore && data.nextCursor) {
         void prefetchEmails(data.nextCursor, requestId)
@@ -198,7 +283,7 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
         setLoadingMore(false)
       }
     }
-  }, [appendEmails, buildUrl, t])
+  }, [buildUrl, prefetchEmails, saveCache, t])
 
   const applyFilters = useCallback(() => {
     setAppliedSearchText(searchText.trim())
@@ -240,12 +325,33 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
   useEffect(() => {
     if (!session) return
 
+    const cached = readEmailCache(cacheKey)
+    if (cached) {
+      emailsRef.current = cached.emails
+      nextCursorRef.current = cached.nextCursor
+      totalRef.current = cached.total
+      setEmails(cached.emails)
+      setNextCursor(cached.nextCursor)
+      setTotal(cached.total)
+      setLoading(false)
+      setListError(null)
+
+      const requestId = ++requestIdRef.current
+      if (Date.now() - cached.savedAt < EMAIL_LIST_CACHE_REFRESH_INTERVAL) {
+        if (cached.nextCursor) {
+          void prefetchEmails(cached.nextCursor, requestId)
+        }
+        return
+      }
+    }
+
     fetchEmails({
       reset: true,
       includeTotal: true,
       prefetch: true,
+      preserveExisting: Boolean(cached),
     })
-  }, [fetchEmails, session])
+  }, [cacheKey, fetchEmails, prefetchEmails, session])
 
   const handleDelete = async (email: Email) => {
     try {
@@ -263,8 +369,13 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
         return
       }
 
-      setEmails(prev => prev.filter(e => e.id !== email.id))
-      setTotal(prev => Math.max((prev ?? emailsRef.current.length) - 1, 0))
+      const updatedEmails = emailsRef.current.filter(e => e.id !== email.id)
+      const updatedTotal = Math.max((totalRef.current ?? emailsRef.current.length) - 1, 0)
+      emailsRef.current = updatedEmails
+      totalRef.current = updatedTotal
+      setEmails(updatedEmails)
+      setTotal(updatedTotal)
+      saveCache(updatedEmails, nextCursorRef.current, updatedTotal)
 
       toast({
         title: t("success"),
