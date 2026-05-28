@@ -23,8 +23,6 @@
     "searchPlaceholder": "输入任意字段搜索",
     "domainPlaceholder": "输入域名后缀，例如 moemail.app",
     "applyFilter": "筛选",
-    "activeFilterHint": "已启用筛选",
-    "cacheHint": "默认先加载 100 个邮箱，随后继续补全缓存",
     "noFilteredEmails": "没有找到符合条件的邮箱",
     "noEmails": "还没有邮箱，创建一个吧！",
     "expiresAt": "过期时间",

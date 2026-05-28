@@ -23,8 +23,6 @@
     "searchPlaceholder": "아무 필드나 검색",
     "domainPlaceholder": "도메인 접미사 입력, 예: moemail.app",
     "applyFilter": "필터",
-    "activeFilterHint": "필터가 적용됨",
-    "cacheHint": "먼저 100개를 불러오고, 그다음 브라우저 캐시를 계속 채웁니다",
     "noFilteredEmails": "조건에 맞는 이메일이 없습니다",
     "noEmails": "아직 이메일이 없습니다. 하나 만들어보세요!",
     "expiresAt": "만료",

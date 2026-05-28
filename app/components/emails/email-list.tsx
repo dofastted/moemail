@@ -335,7 +335,6 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
               />
             </div>
             <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={domainSuffix}
                 onChange={(e) => setDomainSuffix(e.target.value)}
@@ -346,7 +345,6 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
                   }
                 }}
                 placeholder={t("domainPlaceholder")}
-                className="pl-9"
               />
             </div>
             <div className="flex gap-2">
@@ -364,9 +362,6 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
                 <X className="size-4" />
               </Button>
             </div>
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {hasFilters ? t("activeFilterHint") : t("cacheHint")}
           </div>
         </div>
 

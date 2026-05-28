@@ -23,8 +23,6 @@
     "searchPlaceholder": "Search any field",
     "domainPlaceholder": "Domain suffix, for example moemail.app",
     "applyFilter": "Filter",
-    "activeFilterHint": "Filter enabled",
-    "cacheHint": "Load 100 emails first, then keep filling the browser cache",
     "noFilteredEmails": "No emails matched the filters",
     "noEmails": "No emails yet, create one!",
     "expiresAt": "Expires",
