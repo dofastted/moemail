@@ -48,10 +48,6 @@ async function migrate() {
 
     const dbName = config.d1_databases[0].database_name
 
-    // Generate migrations
-    console.log('Generating migrations...')
-    await execAsync('drizzle-kit generate')
-    
     // Applying migrations
     console.log(`Applying migrations to ${mode} database: ${dbName}`)
     await execAsync(`wrangler d1 migrations apply ${dbName} --${mode}`)
