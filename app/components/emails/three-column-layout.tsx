@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslations } from "next-intl"
 import { EmailList } from "./email-list"
 import { MessageListContainer } from "./message-list-container"
@@ -10,6 +10,16 @@ import { cn } from "@/lib/utils"
 import { useCopy } from "@/hooks/use-copy"
 import { useSendPermission } from "@/hooks/use-send-permission"
 import { Copy } from "lucide-react"
+import { useSession } from "next-auth/react"
+import {
+  createMessageCacheUserKey,
+  createMessageDetailCacheKey,
+  createMessageListCacheKey,
+  writeMessageDetailCache,
+  writeMessageListCache,
+  type MessageListItem,
+  type MessageType,
+} from "./message-cache"
 
 interface Email {
   id: string
@@ -18,12 +28,16 @@ interface Email {
 
 export function ThreeColumnLayout() {
   const t = useTranslations("emails.layout")
+  const { data: session } = useSession()
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null)
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null)
-  const [selectedMessageType, setSelectedMessageType] = useState<'received' | 'sent'>('received')
+  const [selectedMessageType, setSelectedMessageType] = useState<MessageType>("received")
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const { copyToClipboard } = useCopy()
   const { canSend: canSendEmails } = useSendPermission()
+  const preloadedEmailsRef = useRef<string[]>([])
+  const preloadAbortRef = useRef<AbortController | null>(null)
+  const cacheUserKey = useMemo(() => createMessageCacheUserKey(session?.user), [session?.user])
 
   const columnClass = "border-2 border-primary/20 bg-background rounded-lg overflow-hidden flex flex-col"
   const headerClass = "p-2 border-b-2 border-primary/20 flex items-center justify-between shrink-0"
@@ -50,6 +64,97 @@ export function ThreeColumnLayout() {
   const handleSendSuccess = () => {
     setRefreshTrigger(prev => prev + 1)
   }
+
+  useEffect(() => {
+    if (!selectedEmail) {
+      setSelectedMessageId(null)
+    }
+  }, [selectedEmail])
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (!session?.user) return
+
+    const abortController = new AbortController()
+    preloadAbortRef.current?.abort()
+    preloadAbortRef.current = abortController
+
+    const preloadFirstFiveEmails = async () => {
+      try {
+        const response = await fetch("/api/emails?limit=5", {
+          signal: abortController.signal,
+        })
+        if (!response.ok) {
+          return
+        }
+
+        const data = await response.json() as {
+          emails: Email[]
+        }
+
+        const preloadTargets = data.emails.slice(0, 5)
+        for (const email of preloadTargets) {
+          if (abortController.signal.aborted) {
+            return
+          }
+          if (preloadedEmailsRef.current.includes(email.id)) {
+            continue
+          }
+          preloadedEmailsRef.current.push(email.id)
+
+          for (const messageType of ["received", "sent"] as MessageType[]) {
+            try {
+              const url = new URL(`/api/emails/${email.id}`, window.location.origin)
+              if (messageType === "sent") {
+                url.searchParams.set("type", "sent")
+              }
+
+              const messageResponse = await fetch(url, {
+                signal: abortController.signal,
+              })
+              if (!messageResponse.ok) {
+                continue
+              }
+
+              const messageData = await messageResponse.json() as {
+                messages: MessageListItem[]
+                nextCursor: string | null
+                total: number
+              }
+
+              writeMessageListCache(
+                createMessageListCacheKey(cacheUserKey, email.id, messageType),
+                {
+                  messages: messageData.messages,
+                  nextCursor: messageData.nextCursor,
+                  total: messageData.total,
+                }
+              )
+
+              for (const message of messageData.messages.slice(0, 1)) {
+                writeMessageDetailCache(
+                  createMessageDetailCacheKey(cacheUserKey, email.id, message.id, messageType),
+                  message
+                )
+              }
+            } catch {
+              if (!abortController.signal.aborted) {
+                continue
+              }
+            }
+          }
+        }
+      } catch {
+        return
+      }
+    }
+
+    void preloadFirstFiveEmails()
+
+    return () => {
+      abortController.abort()
+    }
+  }, [cacheUserKey, session?.user])
 
   return (
     <div className="pb-5 pt-20 h-full flex flex-col">
@@ -101,6 +206,7 @@ export function ThreeColumnLayout() {
                 onMessageSelect={handleMessageSelect}
                 selectedMessageId={selectedMessageId}
                 refreshTrigger={refreshTrigger}
+                cacheUserKey={cacheUserKey}
               />
             </div>
           )}
@@ -177,6 +283,7 @@ export function ThreeColumnLayout() {
                   onMessageSelect={handleMessageSelect}
                   selectedMessageId={selectedMessageId}
                   refreshTrigger={refreshTrigger}
+                  cacheUserKey={cacheUserKey}
                 />
               </div>
             </div>
