@@ -19,14 +19,12 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const cursor = searchParams.get('cursor')
   const search = searchParams.get("search")?.trim() || ""
-  const domain = searchParams.get("domain")?.trim() || ""
   const includeTotal = searchParams.get("includeTotal") !== "0"
   const limitParam = Number(searchParams.get("limit"))
   const pageSize = Number.isFinite(limitParam) && limitParam > 0
     ? Math.min(limitParam, 200)
     : DEFAULT_PAGE_SIZE
   const searchTerm = search.toLowerCase()
-  const domainTerm = domain.toLowerCase()
   
   const db = createDb()
 
@@ -48,11 +46,6 @@ export async function GET(request: Request) {
         sql`LOWER(CAST(${emails.createdAt} AS TEXT)) LIKE ${keyword} ESCAPE '\\'`,
         sql`LOWER(CAST(${emails.expiresAt} AS TEXT)) LIKE ${keyword} ESCAPE '\\'`
       ))
-    }
-
-    if (domainTerm) {
-      const domainKeyword = `%${escapeLike(domainTerm.replace(/^@/, ""))}`
-      conditions.push(sql`SUBSTR(LOWER(${emails.address}), INSTR(LOWER(${emails.address}), '@') + 1) LIKE ${domainKeyword} ESCAPE '\\'`)
     }
 
     const totalCount = includeTotal

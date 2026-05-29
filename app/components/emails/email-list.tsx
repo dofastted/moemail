@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useTranslations } from "next-intl"
 import { CreateDialog } from "./create-dialog"
@@ -132,7 +132,6 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
   const [loadingMore, setLoadingMore] = useState(false)
   const [total, setTotal] = useState<number | null>(null)
   const [searchText, setSearchText] = useState(DEFAULT_SEARCH)
-  const [appliedSearchText, setAppliedSearchText] = useState(DEFAULT_SEARCH)
   const [emailToDelete, setEmailToDelete] = useState<Email | null>(null)
   const [listError, setListError] = useState<string | null>(null)
   const { toast } = useToast()
@@ -140,23 +139,20 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
   const emailsRef = useRef<Email[]>([])
   const nextCursorRef = useRef<string | null>(null)
   const totalRef = useRef<number | null>(null)
-  const filterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchQuery = useDeferredValue(searchText.trim())
 
   useEffect(() => {
     emailsRef.current = emails
   }, [emails])
 
-  const hasFilters = useMemo(
-    () => Boolean(appliedSearchText.trim()),
-    [appliedSearchText]
-  )
+  const hasSearch = Boolean(searchQuery)
 
   const visibleEmails = emails
   const totalCount = total ?? emails.length
   const cacheKey = useMemo(() => {
     const userKey = session?.user?.email || session?.user?.name || "anonymous"
-    return createCacheKey(userKey, appliedSearchText.trim())
-  }, [appliedSearchText, session?.user?.email, session?.user?.name])
+    return createCacheKey(userKey, searchQuery)
+  }, [searchQuery, session?.user?.email, session?.user?.name])
 
   const buildUrl = useCallback((cursor?: string | null, includeTotal = true) => {
     const url = new URL("/api/emails", window.location.origin)
@@ -164,14 +160,14 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
     if (cursor) {
       url.searchParams.set("cursor", cursor)
     }
-    if (appliedSearchText.trim()) {
-      url.searchParams.set("search", appliedSearchText.trim())
+    if (searchQuery) {
+      url.searchParams.set("search", searchQuery)
     }
     if (!includeTotal) {
       url.searchParams.set("includeTotal", "0")
     }
     return url
-  }, [appliedSearchText])
+  }, [searchQuery])
 
   const saveCache = useCallback((items: Email[], cursor: string | null, count: number | null) => {
     writeEmailCache(cacheKey, {
@@ -279,30 +275,9 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
     }
   }, [buildUrl, prefetchEmails, saveCache, t])
 
-  const applyFilters = useCallback(() => {
-    setAppliedSearchText(searchText.trim())
-  }, [searchText])
-
-  const clearFilters = useCallback(() => {
+  const clearSearch = useCallback(() => {
     setSearchText(DEFAULT_SEARCH)
-    setAppliedSearchText(DEFAULT_SEARCH)
   }, [])
-
-  useEffect(() => {
-    if (filterTimerRef.current) {
-      clearTimeout(filterTimerRef.current)
-    }
-
-    filterTimerRef.current = setTimeout(() => {
-      setAppliedSearchText(searchText.trim())
-    }, 250)
-
-    return () => {
-      if (filterTimerRef.current) {
-        clearTimeout(filterTimerRef.current)
-      }
-    }
-  }, [searchText])
 
   const handleRefresh = async () => {
     await fetchEmails({
@@ -444,18 +419,17 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault()
-                  applyFilters()
                 }
               }}
               placeholder={t("searchPlaceholder")}
               aria-label={t("searchPlaceholder")}
               className="h-10 w-full min-w-0 rounded-lg border-primary/20 bg-background pl-9 pr-10 transition-colors focus-visible:border-primary/40"
             />
-            {(searchText || appliedSearchText) && (
+            {searchText && (
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={clearFilters}
+                onClick={clearSearch}
                 className="absolute right-1 top-1/2 size-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 aria-label={t("clearSearch")}
               >
@@ -520,7 +494,7 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
             </>
           ) : (
             <div className="text-center text-sm text-gray-500">
-              {hasFilters ? t("noFilteredEmails") : t("noEmails")}
+              {hasSearch ? t("noSearchResults") : t("noEmails")}
             </div>
           )}
         </div>
