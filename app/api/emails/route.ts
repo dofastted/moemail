@@ -40,9 +40,11 @@ export async function GET(request: Request) {
 
     if (searchTerm) {
       const keyword = `%${escapeLike(searchTerm)}%`
+      const domainKeyword = `%${escapeLike(searchTerm.replace(/^@/, ""))}`
       conditions.push(or(
         sql`LOWER(${emails.id}) LIKE ${keyword} ESCAPE '\\'`,
         sql`LOWER(${emails.address}) LIKE ${keyword} ESCAPE '\\'`,
+        sql`SUBSTR(LOWER(${emails.address}), INSTR(LOWER(${emails.address}), '@') + 1) LIKE ${domainKeyword} ESCAPE '\\'`,
         sql`LOWER(CAST(${emails.createdAt} AS TEXT)) LIKE ${keyword} ESCAPE '\\'`,
         sql`LOWER(CAST(${emails.expiresAt} AS TEXT)) LIKE ${keyword} ESCAPE '\\'`
       ))

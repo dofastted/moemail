@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react"
 import { useTranslations } from "next-intl"
 import { CreateDialog } from "./create-dialog"
 import { ShareDialog } from "./share-dialog"
-import { Filter, Mail, RefreshCw, Search, Trash2, X } from "lucide-react"
+import { Mail, RefreshCw, Search, Trash2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useThrottle } from "@/hooks/use-throttle"
@@ -54,7 +54,6 @@ type LoadOptions = {
 }
 
 const DEFAULT_SEARCH = ""
-const DEFAULT_DOMAIN = ""
 const EMAIL_LIST_CACHE_VERSION = 1
 const EMAIL_LIST_CACHE_PREFIX = "moemail:email-list"
 const EMAIL_LIST_CACHE_REFRESH_INTERVAL = 60_000
@@ -67,13 +66,12 @@ interface CachedEmailList {
   savedAt: number
 }
 
-function createCacheKey(userKey: string, search: string, domain: string) {
+function createCacheKey(userKey: string, search: string) {
   return [
     EMAIL_LIST_CACHE_PREFIX,
     EMAIL_LIST_CACHE_VERSION,
     encodeURIComponent(userKey),
     encodeURIComponent(search),
-    encodeURIComponent(domain),
   ].join(":")
 }
 
@@ -134,9 +132,7 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
   const [loadingMore, setLoadingMore] = useState(false)
   const [total, setTotal] = useState<number | null>(null)
   const [searchText, setSearchText] = useState(DEFAULT_SEARCH)
-  const [domainSuffix, setDomainSuffix] = useState(DEFAULT_DOMAIN)
   const [appliedSearchText, setAppliedSearchText] = useState(DEFAULT_SEARCH)
-  const [appliedDomainSuffix, setAppliedDomainSuffix] = useState(DEFAULT_DOMAIN)
   const [emailToDelete, setEmailToDelete] = useState<Email | null>(null)
   const [listError, setListError] = useState<string | null>(null)
   const { toast } = useToast()
@@ -151,16 +147,16 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
   }, [emails])
 
   const hasFilters = useMemo(
-    () => Boolean(appliedSearchText.trim() || appliedDomainSuffix.trim()),
-    [appliedSearchText, appliedDomainSuffix]
+    () => Boolean(appliedSearchText.trim()),
+    [appliedSearchText]
   )
 
   const visibleEmails = emails
   const totalCount = total ?? emails.length
   const cacheKey = useMemo(() => {
     const userKey = session?.user?.email || session?.user?.name || "anonymous"
-    return createCacheKey(userKey, appliedSearchText.trim(), appliedDomainSuffix.trim())
-  }, [appliedDomainSuffix, appliedSearchText, session?.user?.email, session?.user?.name])
+    return createCacheKey(userKey, appliedSearchText.trim())
+  }, [appliedSearchText, session?.user?.email, session?.user?.name])
 
   const buildUrl = useCallback((cursor?: string | null, includeTotal = true) => {
     const url = new URL("/api/emails", window.location.origin)
@@ -171,14 +167,11 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
     if (appliedSearchText.trim()) {
       url.searchParams.set("search", appliedSearchText.trim())
     }
-    if (appliedDomainSuffix.trim()) {
-      url.searchParams.set("domain", appliedDomainSuffix.trim())
-    }
     if (!includeTotal) {
       url.searchParams.set("includeTotal", "0")
     }
     return url
-  }, [appliedDomainSuffix, appliedSearchText])
+  }, [appliedSearchText])
 
   const saveCache = useCallback((items: Email[], cursor: string | null, count: number | null) => {
     writeEmailCache(cacheKey, {
@@ -288,14 +281,11 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
 
   const applyFilters = useCallback(() => {
     setAppliedSearchText(searchText.trim())
-    setAppliedDomainSuffix(domainSuffix.trim())
-  }, [domainSuffix, searchText])
+  }, [searchText])
 
   const clearFilters = useCallback(() => {
     setSearchText(DEFAULT_SEARCH)
-    setDomainSuffix(DEFAULT_DOMAIN)
     setAppliedSearchText(DEFAULT_SEARCH)
-    setAppliedDomainSuffix(DEFAULT_DOMAIN)
   }, [])
 
   useEffect(() => {
@@ -305,7 +295,6 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
 
     filterTimerRef.current = setTimeout(() => {
       setAppliedSearchText(searchText.trim())
-      setAppliedDomainSuffix(domainSuffix.trim())
     }, 250)
 
     return () => {
@@ -313,7 +302,7 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
         clearTimeout(filterTimerRef.current)
       }
     }
-  }, [domainSuffix, searchText])
+  }, [searchText])
 
   const handleRefresh = async () => {
     await fetchEmails({
@@ -446,52 +435,33 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
           <CreateDialog onEmailCreated={handleRefresh} />
         </div>
 
-        <div className="border-b border-primary/10 p-2 space-y-2">
-          <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_220px]">
-            <div className="relative min-w-0">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault()
-                    applyFilters()
-                  }
-                }}
-                placeholder={t("searchPlaceholder")}
-                className="w-full min-w-0 pl-9"
-              />
-            </div>
-            <div className="w-full min-w-0">
-              <Input
-                value={domainSuffix}
-                onChange={(e) => setDomainSuffix(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault()
-                    applyFilters()
-                  }
-                }}
-                placeholder={t("domainPlaceholder")}
-                className="w-full min-w-0"
-              />
-            </div>
-          </div>
-          <div className="flex items-center justify-end gap-2">
-            <Button onClick={applyFilters} size="sm" className="shrink-0">
-              <Filter className="size-4" />
-              {t("applyFilter")}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={clearFilters}
-              disabled={!searchText && !domainSuffix && !appliedSearchText && !appliedDomainSuffix}
-              className="shrink-0"
-            >
-              <X className="size-4" />
-            </Button>
+        <div className="border-b border-primary/10 p-2">
+          <div className="relative min-w-0">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  applyFilters()
+                }
+              }}
+              placeholder={t("searchPlaceholder")}
+              aria-label={t("searchPlaceholder")}
+              className="h-10 w-full min-w-0 rounded-lg border-primary/20 bg-background pl-9 pr-10 transition-colors focus-visible:border-primary/40"
+            />
+            {(searchText || appliedSearchText) && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={clearFilters}
+                className="absolute right-1 top-1/2 size-8 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                aria-label={t("clearSearch")}
+              >
+                <X className="size-4" />
+              </Button>
+            )}
           </div>
         </div>
 
