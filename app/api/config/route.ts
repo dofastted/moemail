@@ -2,7 +2,14 @@ import { PERMISSIONS, Role, ROLES } from "@/lib/permissions"
 import { getRequestContext } from "@cloudflare/next-on-pages"
 import { EMAIL_CONFIG } from "@/config"
 import { checkPermission, getUserRole } from "@/lib/auth"
-import { getRoleEmailDomains, saveRoleEmailDomains, getAllowedDomainsForRole, getAllRoleEmailDomains, parseEmailDomains, type RoleEmailDomains } from "@/lib/email-domains"
+import {
+  getEmailDomainConfig,
+  saveEmailDomainConfig,
+  getAllowedDomainsForRole,
+  getAdminDomains,
+  parseEmailDomains,
+  type EmailDomainConfig,
+} from "@/lib/email-domains"
 import { getUserId } from "@/lib/apiKey"
 
 export const runtime = "edge"
@@ -12,10 +19,10 @@ export async function GET() {
   const canManageConfig = await checkPermission(PERMISSIONS.MANAGE_CONFIG)
   const userId = await getUserId()
   const userRole = userId ? await getUserRole(userId) as Role : ROLES.CIVILIAN
-  const roleEmailDomains = await getRoleEmailDomains(env.SITE_CONFIG)
+  const domainConfig = await getEmailDomainConfig(env.SITE_CONFIG)
   const availableDomains = canManageConfig
-    ? getAllRoleEmailDomains(roleEmailDomains)
-    : getAllowedDomainsForRole(userRole, roleEmailDomains)
+    ? getAdminDomains(domainConfig)
+    : getAllowedDomainsForRole(userRole, domainConfig)
 
   const [
     defaultRole,
@@ -36,7 +43,7 @@ export async function GET() {
   return Response.json({
     defaultRole: defaultRole || ROLES.CIVILIAN,
     emailDomains: availableDomains.join(","),
-    emailRoleDomains: canManageConfig ? roleEmailDomains : undefined,
+    emailDomainConfig: canManageConfig ? domainConfig : undefined,
     adminContact: adminContact || "",
     maxEmails: maxEmails || EMAIL_CONFIG.MAX_ACTIVE_EMAILS.toString(),
     turnstile: canManageConfig ? {
@@ -59,14 +66,14 @@ export async function POST(request: Request) {
   const {
     defaultRole,
     emailDomains,
-    emailRoleDomains,
+    emailDomainConfig,
     adminContact,
     maxEmails,
     turnstile
   } = await request.json() as { 
     defaultRole: Exclude<Role, typeof ROLES.EMPEROR>,
     emailDomains?: string,
-    emailRoleDomains?: Partial<RoleEmailDomains>,
+    emailDomainConfig?: Partial<EmailDomainConfig>,
     adminContact: string,
     maxEmails: string,
     turnstile?: {
@@ -91,18 +98,17 @@ export async function POST(request: Request) {
   }
 
   const env = getRequestContext().env
-  const roleDomains = emailRoleDomains
-    ? {
-        duke: emailRoleDomains.duke ?? [],
-        knight: emailRoleDomains.knight ?? [],
-      }
+  const domainConfig = emailDomainConfig
+    ? emailDomainConfig
     : {
-        duke: parseEmailDomains(emailDomains),
-        knight: parseEmailDomains(emailDomains),
+        domains: parseEmailDomains(emailDomains).map((domain) => ({
+          domain,
+          visibleToMembers: true,
+        })),
       }
 
-  const savedRoleDomains = await saveRoleEmailDomains(env.SITE_CONFIG, roleDomains)
-  const legacyEmailDomains = getAllRoleEmailDomains(savedRoleDomains).join(",")
+  const savedDomainConfig = await saveEmailDomainConfig(env.SITE_CONFIG, domainConfig)
+  const legacyEmailDomains = getAdminDomains(savedDomainConfig).join(",")
 
   await Promise.all([
     env.SITE_CONFIG.put("DEFAULT_ROLE", defaultRole),

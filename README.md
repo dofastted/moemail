@@ -301,7 +301,7 @@ The system includes four role levels:
 System settings are stored in Cloudflare KV, including:
 
 - `DEFAULT_ROLE`: Default role for new users, values: `CIVILIAN`, `KNIGHT`, `DUKE`
-- `EMAIL_ROLE_DOMAINS`: Email domains provided by role, JSON format `{"duke":["duke.example.com"],"knight":["knight.example.com"]}`
+- `EMAIL_DOMAIN_CONFIG`: Email domain visibility config, JSON format `{"domains":[{"domain":"moemail.app","visibleToMembers":true},{"domain":"private.example.com","visibleToMembers":false}]}`
 - `EMAIL_DOMAINS`: Compatibility union of all supported domains, comma-separated
 - `ADMIN_CONTACT`: Administrator contact info
 - `MAX_EMAILS`: Maximum number of emails per user
@@ -447,16 +447,24 @@ Response:
 {
   "defaultRole": "CIVILIAN",
   "emailDomains": "moemail.app,example.com",
-  "emailRoleDomains": {
-    "duke": ["moemail.app"],
-    "knight": ["example.com"]
+  "emailDomainConfig": {
+    "domains": [
+      {
+        "domain": "moemail.app",
+        "visibleToMembers": true
+      },
+      {
+        "domain": "private.example.com",
+        "visibleToMembers": false
+      }
+    ]
   },
   "adminContact": "admin@example.com",
   "maxEmails": "10"
 }
 ```
 - `emailDomains` contains the domains available to the current user.
-- `emailRoleDomains` is returned for admins and contains the role-based domain configuration.
+- `emailDomainConfig` is returned for admins and contains every domain plus whether it is visible to non-admin members. Admins can use every configured domain.
 
 #### Generate Temp Email
 ```http

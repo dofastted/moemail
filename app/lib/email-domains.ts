@@ -1,9 +1,8 @@
-import type { Role } from "./permissions"
-import { ROLES } from "./permissions"
+import { ROLES, type Role } from "./permissions"
 
-export interface RoleEmailDomains {
-  duke: string[]
-  knight: string[]
+export interface EmailDomainEntry {
+  domain: string
+  visibleToMembers: boolean
 }
 
 export interface SiteConfigStore {
@@ -11,8 +10,12 @@ export interface SiteConfigStore {
   put(key: string, value: string): Promise<unknown>
 }
 
+export interface EmailDomainConfig {
+  domains: EmailDomainEntry[]
+}
+
 export const DEFAULT_EMAIL_DOMAINS = ["moemail.app"]
-export const EMAIL_ROLE_DOMAINS_KEY = "EMAIL_ROLE_DOMAINS"
+export const EMAIL_DOMAIN_CONFIG_KEY = "EMAIL_DOMAIN_CONFIG"
 export const LEGACY_EMAIL_DOMAINS_KEY = "EMAIL_DOMAINS"
 
 export function normalizeEmailDomain(value: string) {
@@ -27,72 +30,101 @@ export function isValidEmailDomain(value: string) {
   )
 }
 
-export function parseEmailDomains(value?: string | null) {
-  const domains = (value || "")
-    .split(",")
-    .map((domain) => normalizeEmailDomain(domain))
-    .filter(isValidEmailDomain)
-
-  return uniqueDomains(domains)
-}
-
 export function uniqueDomains(domains: string[]) {
   return Array.from(new Set(domains.map((domain) => normalizeEmailDomain(domain)).filter(Boolean)))
 }
 
-export function sanitizeRoleEmailDomains(value: Partial<RoleEmailDomains> | undefined, fallbackDomains = DEFAULT_EMAIL_DOMAINS): RoleEmailDomains {
+export function parseEmailDomains(value?: string | null) {
+  return uniqueDomains(
+    (value || "")
+      .split(",")
+      .map((domain) => normalizeEmailDomain(domain))
+      .filter(isValidEmailDomain)
+  )
+}
+
+export function normalizeEmailDomainConfig(
+  value: Partial<EmailDomainConfig> | undefined,
+  fallbackDomains = DEFAULT_EMAIL_DOMAINS
+): EmailDomainConfig {
   const fallback = uniqueDomains(fallbackDomains.filter(isValidEmailDomain))
-  const sanitizeRole = (domains: string[] | undefined) => {
-    const source = Array.isArray(domains) ? domains : fallback
-    return uniqueDomains(source.filter(isValidEmailDomain))
-  }
+  const sourceEntries = value?.domains?.length
+    ? value.domains
+    : fallback.map((domain) => ({ domain, visibleToMembers: true }))
+  const domains = sourceEntries
+    .map((entry) => ({
+      domain: normalizeEmailDomain(entry.domain),
+      visibleToMembers: Boolean(entry.visibleToMembers ?? true),
+    }))
+    .filter((entry) => isValidEmailDomain(entry.domain))
 
+  const seen = new Set<string>()
   return {
-    duke: sanitizeRole(value?.duke),
-    knight: sanitizeRole(value?.knight),
+    domains: domains.filter((entry) => {
+      if (seen.has(entry.domain)) return false
+      seen.add(entry.domain)
+      return true
+    }),
   }
 }
 
-export function getAllRoleEmailDomains(roleDomains: RoleEmailDomains) {
-  return uniqueDomains([...roleDomains.duke, ...roleDomains.knight])
+export function getVisibleDomains(domainConfig: EmailDomainConfig) {
+  return domainConfig.domains.filter((entry) => entry.visibleToMembers).map((entry) => entry.domain)
 }
 
-export function getAllowedDomainsForRole(role: Role, roleDomains: RoleEmailDomains) {
-  if (role === ROLES.EMPEROR) return getAllRoleEmailDomains(roleDomains)
-  if (role === ROLES.DUKE) return roleDomains.duke
-  if (role === ROLES.KNIGHT) return roleDomains.knight
-  return []
+export function getAllDomains(domainConfig: EmailDomainConfig) {
+  return domainConfig.domains.map((entry) => entry.domain)
 }
 
-export async function getRoleEmailDomains(siteConfig: SiteConfigStore): Promise<RoleEmailDomains> {
-  const [roleDomainsJson, legacyDomainsText] = await Promise.all([
-    siteConfig.get(EMAIL_ROLE_DOMAINS_KEY),
+export function getAdminDomains(domainConfig: EmailDomainConfig) {
+  return getAllDomains(domainConfig)
+}
+
+export function getMemberDomains(domainConfig: EmailDomainConfig) {
+  return getVisibleDomains(domainConfig)
+}
+
+export function getAllowedDomainsForRole(role: Role, domainConfig: EmailDomainConfig) {
+  if (role === ROLES.EMPEROR) return getAdminDomains(domainConfig)
+  return getMemberDomains(domainConfig)
+}
+
+export async function getEmailDomainConfig(siteConfig: SiteConfigStore): Promise<EmailDomainConfig> {
+  const [domainConfigJson, legacyDomainsText] = await Promise.all([
+    siteConfig.get(EMAIL_DOMAIN_CONFIG_KEY),
     siteConfig.get(LEGACY_EMAIL_DOMAINS_KEY),
   ])
 
   const fallbackDomains = parseEmailDomains(legacyDomainsText)
   const finalFallback = fallbackDomains.length > 0 ? fallbackDomains : DEFAULT_EMAIL_DOMAINS
 
-  if (!roleDomainsJson) {
-    return sanitizeRoleEmailDomains(undefined, finalFallback)
+  if (!domainConfigJson) {
+    return normalizeEmailDomainConfig(
+      {
+        domains: finalFallback.map((domain) => ({ domain, visibleToMembers: true })),
+      },
+      finalFallback
+    )
   }
 
   try {
-    const parsed = JSON.parse(roleDomainsJson) as Partial<RoleEmailDomains>
-    return sanitizeRoleEmailDomains(parsed, finalFallback)
+    const parsed = JSON.parse(domainConfigJson) as Partial<EmailDomainConfig>
+    return normalizeEmailDomainConfig(parsed, finalFallback)
   } catch {
-    return sanitizeRoleEmailDomains(undefined, finalFallback)
+    return normalizeEmailDomainConfig(
+      {
+        domains: finalFallback.map((domain) => ({ domain, visibleToMembers: true })),
+      },
+      finalFallback
+    )
   }
 }
 
-export async function saveRoleEmailDomains(siteConfig: SiteConfigStore, roleDomains: RoleEmailDomains) {
-  const sanitized = sanitizeRoleEmailDomains(roleDomains, [])
-  const legacyDomains = getAllRoleEmailDomains(sanitized).join(",")
-
+export async function saveEmailDomainConfig(siteConfig: SiteConfigStore, domainConfig: Partial<EmailDomainConfig>) {
+  const sanitized = normalizeEmailDomainConfig(domainConfig, [])
   await Promise.all([
-    siteConfig.put(EMAIL_ROLE_DOMAINS_KEY, JSON.stringify(sanitized)),
-    siteConfig.put(LEGACY_EMAIL_DOMAINS_KEY, legacyDomains),
+    siteConfig.put(EMAIL_DOMAIN_CONFIG_KEY, JSON.stringify(sanitized)),
+    siteConfig.put(LEGACY_EMAIL_DOMAINS_KEY, getAllDomains(sanitized).join(",")),
   ])
-
   return sanitized
 }

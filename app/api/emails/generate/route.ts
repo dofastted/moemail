@@ -9,7 +9,7 @@ import { getRequestContext } from "@cloudflare/next-on-pages"
 import { getUserId } from "@/lib/apiKey"
 import { getUserRole } from "@/lib/auth"
 import { ROLES, type Role } from "@/lib/permissions"
-import { getAllowedDomainsForRole, getRoleEmailDomains, normalizeEmailDomain } from "@/lib/email-domains"
+import { getAllowedDomainsForRole, getEmailDomainConfig, normalizeEmailDomain } from "@/lib/email-domains"
 
 export const runtime = "edge"
 
@@ -61,8 +61,8 @@ export async function POST(request: Request) {
       )
     }
 
-    const roleEmailDomains = await getRoleEmailDomains(env.SITE_CONFIG)
-    const domains = getAllowedDomainsForRole(userRole as Role, roleEmailDomains)
+    const domainConfig = await getEmailDomainConfig(env.SITE_CONFIG)
+    const domains = getAllowedDomainsForRole(userRole as Role, domainConfig)
     const normalizedDomain = normalizeEmailDomain(domain)
 
     if (domains.length === 0) {
