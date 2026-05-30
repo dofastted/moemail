@@ -47,7 +47,8 @@
     "create": "Create",
     "creating": "Creating...",
     "success": "Email created successfully",
-    "failed": "Failed to create email"
+    "failed": "Failed to create email",
+    "noDomains": "No domains are available for your role"
   },
   "messages": {
     "received": "Received",

@@ -8,7 +8,8 @@ import { EMAIL_CONFIG } from "@/config"
 import { getRequestContext } from "@cloudflare/next-on-pages"
 import { getUserId } from "@/lib/apiKey"
 import { getUserRole } from "@/lib/auth"
-import { ROLES } from "@/lib/permissions"
+import { ROLES, type Role } from "@/lib/permissions"
+import { getAllowedDomainsForRole, getRoleEmailDomains, normalizeEmailDomain } from "@/lib/email-domains"
 
 export const runtime = "edge"
 
@@ -17,6 +18,13 @@ export async function POST(request: Request) {
   const env = getRequestContext().env
 
   const userId = await getUserId()
+  if (!userId) {
+    return NextResponse.json(
+      { error: "请先登录" },
+      { status: 401 }
+    )
+  }
+
   const userRole = await getUserRole(userId!)
 
   try {
@@ -53,17 +61,25 @@ export async function POST(request: Request) {
       )
     }
 
-    const domainString = await env.SITE_CONFIG.get("EMAIL_DOMAINS")
-    const domains = domainString ? domainString.split(',') : ["moemail.app"]
+    const roleEmailDomains = await getRoleEmailDomains(env.SITE_CONFIG)
+    const domains = getAllowedDomainsForRole(userRole as Role, roleEmailDomains)
+    const normalizedDomain = normalizeEmailDomain(domain)
 
-    if (!domains || !domains.includes(domain)) {
+    if (domains.length === 0) {
+      return NextResponse.json(
+        { error: "当前角色暂无可用域名" },
+        { status: 403 }
+      )
+    }
+
+    if (!domains.includes(normalizedDomain)) {
       return NextResponse.json(
         { error: "无效的域名" },
         { status: 400 }
       )
     }
 
-    const address = `${name || nanoid(8)}@${domain}`
+    const address = `${name || nanoid(8)}@${normalizedDomain}`
     const existingEmail = await db.query.emails.findFirst({
       where: eq(sql`LOWER(${emails.address})`, address.toLowerCase())
     })
@@ -102,4 +118,4 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-} 
+}

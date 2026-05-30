@@ -301,7 +301,8 @@ The system includes four role levels:
 System settings are stored in Cloudflare KV, including:
 
 - `DEFAULT_ROLE`: Default role for new users, values: `CIVILIAN`, `KNIGHT`, `DUKE`
-- `EMAIL_DOMAINS`: Supported email domains, comma-separated
+- `EMAIL_ROLE_DOMAINS`: Email domains provided by role, JSON format `{"duke":["duke.example.com"],"knight":["knight.example.com"]}`
+- `EMAIL_DOMAINS`: Compatibility union of all supported domains, comma-separated
 - `ADMIN_CONTACT`: Administrator contact info
 - `MAX_EMAILS`: Maximum number of emails per user
 
@@ -446,10 +447,16 @@ Response:
 {
   "defaultRole": "CIVILIAN",
   "emailDomains": "moemail.app,example.com",
+  "emailRoleDomains": {
+    "duke": ["moemail.app"],
+    "knight": ["example.com"]
+  },
   "adminContact": "admin@example.com",
   "maxEmails": "10"
 }
 ```
+- `emailDomains` contains the domains available to the current user.
+- `emailRoleDomains` is returned for admins and contains the role-based domain configuration.
 
 #### Generate Temp Email
 ```http

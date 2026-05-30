@@ -300,7 +300,8 @@ pnpm dlx tsx ./scripts/deploy/index.ts
 系统设置存储在 Cloudflare KV 中，包括以下内容：
 
 - `DEFAULT_ROLE`: 新注册用户默认角色，可选值为 `CIVILIAN`、`KNIGHT`、`DUKE`
-- `EMAIL_DOMAINS`: 支持的邮箱域名，多个域名用逗号分隔
+- `EMAIL_ROLE_DOMAINS`: 按角色提供的邮箱域名，JSON 格式为 `{"duke":["duke.example.com"],"knight":["knight.example.com"]}`
+- `EMAIL_DOMAINS`: 兼容旧客户端的域名并集，多个域名用逗号分隔
 - `ADMIN_CONTACT`: 管理员联系方式
 - `MAX_EMAILS`: 每个用户可创建的最大邮箱数量
 
@@ -445,13 +446,18 @@ GET /api/config
 {
   "defaultRole": "CIVILIAN",
   "emailDomains": "moemail.app,example.com",
+  "emailRoleDomains": {
+    "duke": ["moemail.app"],
+    "knight": ["example.com"]
+  },
   "adminContact": "admin@example.com",
   "maxEmails": "10"
 }
 ```
 响应字段说明：
 - `defaultRole`: 新用户默认角色，可选值：`CIVILIAN`（平民）、`KNIGHT`（骑士）、`DUKE`（公爵）
-- `emailDomains`: 支持的邮箱域名，多个域名用逗号分隔
+- `emailDomains`: 当前用户可用的邮箱域名，多个域名用逗号分隔
+- `emailRoleDomains`: 管理员可见的按角色域名配置
 - `adminContact`: 管理员联系方式
 - `maxEmails`: 每个用户可创建的最大邮箱数量
 

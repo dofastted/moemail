@@ -9,6 +9,10 @@ interface Config {
   defaultRole: Exclude<Role, typeof ROLES.EMPEROR>
   emailDomains: string
   emailDomainsArray: string[]
+  emailRoleDomains?: {
+    duke: string[]
+    knight: string[]
+  }
   adminContact: string
   maxEmails: number
 }
@@ -34,7 +38,8 @@ const useConfigStore = create<ConfigStore>((set) => ({
         config: {
           defaultRole: data.defaultRole || ROLES.CIVILIAN,
           emailDomains: data.emailDomains,
-          emailDomainsArray: data.emailDomains.split(','),
+          emailDomainsArray: data.emailDomains.split(',').map(domain => domain.trim()).filter(Boolean),
+          emailRoleDomains: data.emailRoleDomains,
           adminContact: data.adminContact || "",
           maxEmails: Number(data.maxEmails) || EMAIL_CONFIG.MAX_ACTIVE_EMAILS
         },
@@ -59,4 +64,4 @@ export function useConfig() {
   }, [store.config, store.loading])
 
   return store
-} 
+}

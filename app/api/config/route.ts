@@ -1,17 +1,24 @@
 import { PERMISSIONS, Role, ROLES } from "@/lib/permissions"
 import { getRequestContext } from "@cloudflare/next-on-pages"
 import { EMAIL_CONFIG } from "@/config"
-import { checkPermission } from "@/lib/auth"
+import { checkPermission, getUserRole } from "@/lib/auth"
+import { getRoleEmailDomains, saveRoleEmailDomains, getAllowedDomainsForRole, getAllRoleEmailDomains, parseEmailDomains, type RoleEmailDomains } from "@/lib/email-domains"
+import { getUserId } from "@/lib/apiKey"
 
 export const runtime = "edge"
 
 export async function GET() {
   const env = getRequestContext().env
   const canManageConfig = await checkPermission(PERMISSIONS.MANAGE_CONFIG)
+  const userId = await getUserId()
+  const userRole = userId ? await getUserRole(userId) as Role : ROLES.CIVILIAN
+  const roleEmailDomains = await getRoleEmailDomains(env.SITE_CONFIG)
+  const availableDomains = canManageConfig
+    ? getAllRoleEmailDomains(roleEmailDomains)
+    : getAllowedDomainsForRole(userRole, roleEmailDomains)
 
   const [
     defaultRole,
-    emailDomains,
     adminContact,
     maxEmails,
     turnstileEnabled,
@@ -19,7 +26,6 @@ export async function GET() {
     turnstileSecretKey
   ] = await Promise.all([
     env.SITE_CONFIG.get("DEFAULT_ROLE"),
-    env.SITE_CONFIG.get("EMAIL_DOMAINS"),
     env.SITE_CONFIG.get("ADMIN_CONTACT"),
     env.SITE_CONFIG.get("MAX_EMAILS"),
     env.SITE_CONFIG.get("TURNSTILE_ENABLED"),
@@ -29,7 +35,8 @@ export async function GET() {
 
   return Response.json({
     defaultRole: defaultRole || ROLES.CIVILIAN,
-    emailDomains: emailDomains || "moemail.app",
+    emailDomains: availableDomains.join(","),
+    emailRoleDomains: canManageConfig ? roleEmailDomains : undefined,
     adminContact: adminContact || "",
     maxEmails: maxEmails || EMAIL_CONFIG.MAX_ACTIVE_EMAILS.toString(),
     turnstile: canManageConfig ? {
@@ -52,12 +59,14 @@ export async function POST(request: Request) {
   const {
     defaultRole,
     emailDomains,
+    emailRoleDomains,
     adminContact,
     maxEmails,
     turnstile
   } = await request.json() as { 
     defaultRole: Exclude<Role, typeof ROLES.EMPEROR>,
-    emailDomains: string,
+    emailDomains?: string,
+    emailRoleDomains?: Partial<RoleEmailDomains>,
     adminContact: string,
     maxEmails: string,
     turnstile?: {
@@ -82,9 +91,22 @@ export async function POST(request: Request) {
   }
 
   const env = getRequestContext().env
+  const roleDomains = emailRoleDomains
+    ? {
+        duke: emailRoleDomains.duke ?? [],
+        knight: emailRoleDomains.knight ?? [],
+      }
+    : {
+        duke: parseEmailDomains(emailDomains),
+        knight: parseEmailDomains(emailDomains),
+      }
+
+  const savedRoleDomains = await saveRoleEmailDomains(env.SITE_CONFIG, roleDomains)
+  const legacyEmailDomains = getAllRoleEmailDomains(savedRoleDomains).join(",")
+
   await Promise.all([
     env.SITE_CONFIG.put("DEFAULT_ROLE", defaultRole),
-    env.SITE_CONFIG.put("EMAIL_DOMAINS", emailDomains),
+    env.SITE_CONFIG.put("EMAIL_DOMAINS", legacyEmailDomains),
     env.SITE_CONFIG.put("ADMIN_CONTACT", adminContact),
     env.SITE_CONFIG.put("MAX_EMAILS", maxEmails),
     env.SITE_CONFIG.put("TURNSTILE_ENABLED", turnstileConfig.enabled.toString()),
