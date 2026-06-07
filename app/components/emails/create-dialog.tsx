@@ -5,12 +5,11 @@ import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Check, ChevronDown, Copy, Plus, RefreshCw, Shuffle } from "lucide-react"
+import { Check, Copy, Globe2, Plus, RefreshCw, Shuffle } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { nanoid } from "nanoid"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { EXPIRY_OPTIONS } from "@/types/email"
 import { useCopy } from "@/hooks/use-copy"
 import { useConfig } from "@/hooks/use-config"
@@ -35,7 +34,7 @@ export function CreateDialog({ onEmailCreated }: CreateDialogProps) {
   const [loading, setLoading] = useState(false)
   const [emailName, setEmailName] = useState("")
   const [currentDomain, setCurrentDomain] = useState("")
-  const [domainPopoverOpen, setDomainPopoverOpen] = useState(false)
+  const [domainDialogOpen, setDomainDialogOpen] = useState(false)
   const [expiryTime, setExpiryTime] = useState(EXPIRY_OPTIONS[1].value.toString())
   const { toast } = useToast()
   const { copyToClipboard } = useCopy()
@@ -45,6 +44,11 @@ export function CreateDialog({ onEmailCreated }: CreateDialogProps) {
   const currentDomainLabel = isRandomDomain ? t("randomDomain") : `@${currentDomain}`
 
   const generateRandomName = () => setEmailName(nanoid(8))
+
+  const selectDomain = (domain: string) => {
+    setCurrentDomain(domain)
+    setDomainDialogOpen(false)
+  }
 
   const copyEmailAddress = () => {
     if (!currentDomain || isRandomDomain) return
@@ -154,52 +158,55 @@ export function CreateDialog({ onEmailCreated }: CreateDialogProps) {
               className="flex-1"
             />
             {hasAvailableDomains && (
-              <Popover open={domainPopoverOpen} onOpenChange={setDomainPopoverOpen}>
-                <PopoverTrigger asChild>
+              <Dialog open={domainDialogOpen} onOpenChange={setDomainDialogOpen}>
+                <DialogTrigger asChild>
                   <Button
                     type="button"
                     variant="outline"
                     className="w-[180px] justify-between gap-2 px-3 font-normal"
                   >
+                    <Globe2 className="size-4 shrink-0 opacity-70" />
                     <span className="truncate">{currentDomainLabel}</span>
-                    <ChevronDown className="size-4 shrink-0 opacity-60" />
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="w-[220px] p-1">
-                  <button
-                    type="button"
-                    className={cn(
-                      "flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm outline-none hover:bg-accent hover:text-accent-foreground",
-                      isRandomDomain && "bg-accent text-accent-foreground"
-                    )}
-                    onClick={() => {
-                      setCurrentDomain(RANDOM_DOMAIN_VALUE)
-                      setDomainPopoverOpen(false)
-                    }}
-                  >
-                    <Shuffle className="size-4 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate">{t("randomDomain")}</span>
-                    {isRandomDomain && <Check className="size-4 shrink-0" />}
-                  </button>
-                  {availableDomains.map((domain) => (
+                </DialogTrigger>
+                <DialogContent className="max-w-sm">
+                  <DialogHeader>
+                    <DialogTitle>{t("domainPlaceholder")}</DialogTitle>
+                  </DialogHeader>
+                  <div className="grid gap-2">
                     <button
-                      key={domain}
                       type="button"
                       className={cn(
-                        "flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm outline-none hover:bg-accent hover:text-accent-foreground",
-                        currentDomain === domain && "bg-accent text-accent-foreground"
+                        "flex w-full items-center gap-3 rounded-md border px-3 py-3 text-left text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring",
+                        isRandomDomain && "border-primary bg-accent text-accent-foreground"
                       )}
-                      onClick={() => {
-                        setCurrentDomain(domain)
-                        setDomainPopoverOpen(false)
-                      }}
+                      onClick={() => selectDomain(RANDOM_DOMAIN_VALUE)}
                     >
-                      <span className="min-w-0 flex-1 truncate">@{domain}</span>
-                      {currentDomain === domain && <Check className="size-4 shrink-0" />}
+                      <Shuffle className="size-4 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate">{t("randomDomain")}</span>
+                      {isRandomDomain && <Check className="size-4 shrink-0" />}
                     </button>
-                  ))}
-                </PopoverContent>
-              </Popover>
+                    <div className="max-h-72 overflow-y-auto pr-1">
+                      <div className="grid gap-2">
+                        {availableDomains.map((domain) => (
+                          <button
+                            key={domain}
+                            type="button"
+                            className={cn(
+                              "flex w-full items-center gap-3 rounded-md border px-3 py-3 text-left text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring",
+                              currentDomain === domain && "border-primary bg-accent text-accent-foreground"
+                            )}
+                            onClick={() => selectDomain(domain)}
+                          >
+                            <span className="min-w-0 flex-1 truncate">@{domain}</span>
+                            {currentDomain === domain && <Check className="size-4 shrink-0" />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
             )}
             <Button
               variant="outline"
