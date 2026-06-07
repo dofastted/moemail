@@ -5,18 +5,25 @@ import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Copy, Plus, RefreshCw } from "lucide-react"
+import { Check, ChevronDown, Copy, Plus, RefreshCw, Shuffle } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { nanoid } from "nanoid"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { EXPIRY_OPTIONS } from "@/types/email"
 import { useCopy } from "@/hooks/use-copy"
 import { useConfig } from "@/hooks/use-config"
+import { cn } from "@/lib/utils"
 
 interface CreateDialogProps {
   onEmailCreated: () => void
+}
+
+const RANDOM_DOMAIN_VALUE = "__random__"
+
+function pickRandomDomain(domains: string[]) {
+  return domains[Math.floor(Math.random() * domains.length)] ?? ""
 }
 
 export function CreateDialog({ onEmailCreated }: CreateDialogProps) {
@@ -28,16 +35,19 @@ export function CreateDialog({ onEmailCreated }: CreateDialogProps) {
   const [loading, setLoading] = useState(false)
   const [emailName, setEmailName] = useState("")
   const [currentDomain, setCurrentDomain] = useState("")
+  const [domainPopoverOpen, setDomainPopoverOpen] = useState(false)
   const [expiryTime, setExpiryTime] = useState(EXPIRY_OPTIONS[1].value.toString())
   const { toast } = useToast()
   const { copyToClipboard } = useCopy()
   const availableDomains = useMemo(() => config?.emailDomainsArray ?? [], [config?.emailDomainsArray])
   const hasAvailableDomains = availableDomains.length > 0
+  const isRandomDomain = currentDomain === RANDOM_DOMAIN_VALUE
+  const currentDomainLabel = isRandomDomain ? t("randomDomain") : `@${currentDomain}`
 
   const generateRandomName = () => setEmailName(nanoid(8))
 
   const copyEmailAddress = () => {
-    if (!currentDomain) return
+    if (!currentDomain || isRandomDomain) return
     copyToClipboard(`${emailName}@${currentDomain}`)
   }
 
@@ -60,6 +70,16 @@ export function CreateDialog({ onEmailCreated }: CreateDialogProps) {
       return
     }
 
+    const domain = isRandomDomain ? pickRandomDomain(availableDomains) : currentDomain
+    if (!domain) {
+      toast({
+        title: tList("error"),
+        description: t("noDomains"),
+        variant: "destructive"
+      })
+      return
+    }
+
     setLoading(true)
     try {
       const response = await fetch("/api/emails/generate", {
@@ -67,7 +87,7 @@ export function CreateDialog({ onEmailCreated }: CreateDialogProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: emailName,
-          domain: currentDomain,
+          domain,
           expiryTime: parseInt(expiryTime)
         })
       })
@@ -101,11 +121,16 @@ export function CreateDialog({ onEmailCreated }: CreateDialogProps) {
   }
 
   useEffect(() => {
-    if (availableDomains.length > 0) {
-      setCurrentDomain(availableDomains[0] ?? "")
-    } else {
+    if (availableDomains.length === 0) {
       setCurrentDomain("")
+      return
     }
+
+    setCurrentDomain((domain) => (
+      domain === RANDOM_DOMAIN_VALUE || availableDomains.includes(domain)
+        ? domain
+        : availableDomains[0] ?? ""
+    ))
   }, [availableDomains])
 
   return (
@@ -128,22 +153,53 @@ export function CreateDialog({ onEmailCreated }: CreateDialogProps) {
               placeholder={t("namePlaceholder")}
               className="flex-1"
             />
-            {availableDomains.length > 1 && (
-              <Select value={currentDomain} onValueChange={setCurrentDomain}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableDomains.map(d => (
-                    <SelectItem key={d} value={d}>@{d}</SelectItem>
+            {hasAvailableDomains && (
+              <Popover open={domainPopoverOpen} onOpenChange={setDomainPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-[180px] justify-between gap-2 px-3 font-normal"
+                  >
+                    <span className="truncate">{currentDomainLabel}</span>
+                    <ChevronDown className="size-4 shrink-0 opacity-60" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-[220px] p-1">
+                  <button
+                    type="button"
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm outline-none hover:bg-accent hover:text-accent-foreground",
+                      isRandomDomain && "bg-accent text-accent-foreground"
+                    )}
+                    onClick={() => {
+                      setCurrentDomain(RANDOM_DOMAIN_VALUE)
+                      setDomainPopoverOpen(false)
+                    }}
+                  >
+                    <Shuffle className="size-4 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">{t("randomDomain")}</span>
+                    {isRandomDomain && <Check className="size-4 shrink-0" />}
+                  </button>
+                  {availableDomains.map((domain) => (
+                    <button
+                      key={domain}
+                      type="button"
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm outline-none hover:bg-accent hover:text-accent-foreground",
+                        currentDomain === domain && "bg-accent text-accent-foreground"
+                      )}
+                      onClick={() => {
+                        setCurrentDomain(domain)
+                        setDomainPopoverOpen(false)
+                      }}
+                    >
+                      <span className="min-w-0 flex-1 truncate">@{domain}</span>
+                      {currentDomain === domain && <Check className="size-4 shrink-0" />}
+                    </button>
                   ))}
-                </SelectContent>
-              </Select>
-            )}
-            {availableDomains.length === 1 && (
-              <div className="flex h-9 w-[180px] items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground">
-                @{availableDomains[0]}
-              </div>
+                </PopoverContent>
+              </Popover>
             )}
             <Button
               variant="outline"
@@ -160,10 +216,10 @@ export function CreateDialog({ onEmailCreated }: CreateDialogProps) {
             <RadioGroup
               value={expiryTime}
               onValueChange={setExpiryTime}
-              className="flex gap-6"
+              className="flex flex-wrap gap-4"
             >
               {EXPIRY_OPTIONS.map((option, index) => {
-                const labels = [t("oneHour"), t("oneDay"), t("threeDays"), t("permanent")]
+                const labels = [t("oneHour"), t("oneDay"), t("threeDays"), t("oneMonth"), t("permanent")]
                 return (
                   <div key={option.value} className="flex items-center gap-2">
                     <RadioGroupItem value={option.value.toString()} id={option.value.toString()} />
@@ -182,13 +238,17 @@ export function CreateDialog({ onEmailCreated }: CreateDialogProps) {
               <span className="text-destructive">{t("noDomains")}</span>
             ) : emailName ? (
               <div className="flex items-center gap-2 min-w-0">
-                <span className="truncate">{`${emailName}@${currentDomain}`}</span>
-                <div
-                  className="shrink-0 cursor-pointer hover:text-primary transition-colors"
-                  onClick={copyEmailAddress}
-                >
-                  <Copy className="size-4" />
-                </div>
+                <span className="truncate">
+                  {isRandomDomain ? `${emailName}@${t("randomDomainPreview")}` : `${emailName}@${currentDomain}`}
+                </span>
+                {!isRandomDomain && (
+                  <div
+                    className="shrink-0 cursor-pointer hover:text-primary transition-colors"
+                    onClick={copyEmailAddress}
+                  >
+                    <Copy className="size-4" />
+                  </div>
+                )}
               </div>
             ) : (
               <span className="text-gray-400">...</span>
