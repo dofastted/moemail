@@ -224,6 +224,8 @@ export function ThreeColumnLayout() {
                 emailId={selectedEmail.id}
                 messageId={selectedMessageId}
                 messageType={selectedMessageType}
+                fromAddress={selectedEmail.address}
+                onSendSuccess={handleSendSuccess}
                 onClose={() => setSelectedMessageId(null)}
               />
             </div>
@@ -305,6 +307,8 @@ export function ThreeColumnLayout() {
                   emailId={selectedEmail.id}
                   messageId={selectedMessageId}
                   messageType={selectedMessageType}
+                  fromAddress={selectedEmail.address}
+                  onSendSuccess={handleSendSuccess}
                   onClose={() => setSelectedMessageId(null)}
                 />
               </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,10 +18,24 @@ import {
 interface SendDialogProps {
   emailId: string
   fromAddress: string
+  replyToAddress?: string
+  initialSubject?: string
+  triggerLabel?: string
+  triggerIcon?: ReactNode
+  triggerClassName?: string
   onSendSuccess?: () => void
 }
 
-export function SendDialog({ emailId, fromAddress, onSendSuccess }: SendDialogProps) {
+export function SendDialog({
+  emailId,
+  fromAddress,
+  replyToAddress,
+  initialSubject = "",
+  triggerLabel,
+  triggerIcon,
+  triggerClassName,
+  onSendSuccess,
+}: SendDialogProps) {
   const t = useTranslations("emails.send")
   const tList = useTranslations("emails.list")
   const tCommon = useTranslations("common.actions")
@@ -31,6 +45,13 @@ export function SendDialog({ emailId, fromAddress, onSendSuccess }: SendDialogPr
   const [subject, setSubject] = useState("")
   const [content, setContent] = useState("")
   const { toast } = useToast()
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    setOpen(nextOpen)
+    if (!nextOpen) return
+    setTo(replyToAddress || "")
+    setSubject(initialSubject)
+  }
 
   const handleSend = async () => {
     if (!to.trim() || !subject.trim() || !content.trim()) {
@@ -83,7 +104,7 @@ export function SendDialog({ emailId, fromAddress, onSendSuccess }: SendDialogPr
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <TooltipProvider>
         <Tooltip>
           <DialogTrigger asChild>
@@ -93,8 +114,8 @@ export function SendDialog({ emailId, fromAddress, onSendSuccess }: SendDialogPr
                 size="sm"
                 className="h-8 gap-2 hover:bg-primary/10 hover:text-primary transition-colors"
               >
-                <Send className="h-4 w-4" />
-                <span className="hidden sm:inline">{t("title")}</span>
+                {triggerIcon ?? <Send className="h-4 w-4" />}
+                <span className={triggerClassName ?? "hidden sm:inline"}>{triggerLabel ?? t("title")}</span>
               </Button>
             </TooltipTrigger>
           </DialogTrigger>

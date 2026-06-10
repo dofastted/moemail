@@ -73,7 +73,7 @@
     "subject": "Subject",
     "subjectPlaceholder": "Email subject",
     "content": "Content",
-    "contentPlaceholder": "Email content (supports HTML)",
+    "contentPlaceholder": "Email content (supports Markdown)",
     "send": "Send",
     "sending": "Sending...",
     "success": "Email sent successfully",
@@ -91,7 +91,8 @@
     "to": "To",
     "time": "Time",
     "htmlFormat": "HTML Format",
-    "textFormat": "Plain Text Format"
+    "textFormat": "Plain Text Format",
+    "reply": "Reply"
   },
   "share": {
     "title": "Share Mailbox",

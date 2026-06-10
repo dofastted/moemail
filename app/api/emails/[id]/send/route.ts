@@ -4,6 +4,7 @@ import { createDb } from "@/lib/db"
 import { emails, messages } from "@/lib/schema"
 import { eq } from "drizzle-orm"
 import { getRequestContext } from "@cloudflare/next-on-pages"
+import { renderMarkdownEmail } from "@/lib/markdown"
 import { checkSendPermission } from "@/lib/send-permissions"
 
 export const runtime = "edge"
@@ -17,7 +18,7 @@ interface SendEmailRequest {
 async function sendWithResend(
   to: string,
   subject: string,
-  content: string,
+  html: string,
   fromEmail: string,
   config: { apiKey: string }
 ) {
@@ -31,7 +32,7 @@ async function sendWithResend(
       from: fromEmail,
       to: [to],
       subject: subject,
-      html: content,
+      html,
     }),
   })
 
@@ -107,16 +108,18 @@ export async function POST(
       )
     }
 
-    await sendWithResend(to, subject, content, email.address, { apiKey })
+    const html = renderMarkdownEmail(content)
+
+    await sendWithResend(to, subject, html, email.address, { apiKey })
 
     await db.insert(messages).values({
       emailId: email.id,
       fromAddress: email.address,
       toAddress: to,
       subject,
-      content: '',
+      content,
       type: "sent",
-      html: content
+      html
     })
 
     return NextResponse.json({ 

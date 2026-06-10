@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useTranslations } from "next-intl"
-import { Loader2, Share2 } from "lucide-react"
+import { Loader2, Reply, Share2 } from "lucide-react"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 import { useTheme } from "next-themes"
 import { useToast } from "@/components/ui/use-toast"
 import { ShareMessageDialog } from "./share-message-dialog"
+import { SendDialog } from "./send-dialog"
 import {
   createMessageCacheUserKey,
   createMessageDetailCacheKey,
@@ -23,11 +24,13 @@ interface MessageViewProps {
   messageId: string
   messageType?: MessageType
   onClose: () => void
+  fromAddress: string
+  onSendSuccess?: () => void
 }
 
 type ViewMode = "html" | "text"
 
-export function MessageView({ emailId, messageId, messageType = "received" }: MessageViewProps) {
+export function MessageView({ emailId, messageId, messageType = "received", fromAddress, onSendSuccess }: MessageViewProps) {
   const t = useTranslations("emails.messageView")
   const tList = useTranslations("emails.list")
   const { data: session } = useSession()
@@ -40,6 +43,10 @@ export function MessageView({ emailId, messageId, messageType = "received" }: Me
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>("html")
+  const canReply = messageType === "received" && !!message?.from_address
+  const replySubject = message?.subject?.toLowerCase().startsWith("re:")
+    ? message.subject
+    : `Re: ${message?.subject || ""}`
 
   useEffect(() => {
     const cached = readMessageDetailCache(cacheKey)
@@ -217,16 +224,30 @@ export function MessageView({ emailId, messageId, messageType = "received" }: Me
       <div className="p-4 space-y-3 border-b border-primary/20">
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-base font-bold flex-1">{message.subject}</h3>
-          <ShareMessageDialog
-            emailId={emailId}
-            messageId={message.id}
-            messageSubject={message.subject}
-            trigger={
-              <button className="p-1.5 hover:bg-primary/10 rounded-md transition-colors">
-                <Share2 className="h-4 w-4 text-gray-500" />
-              </button>
-            }
-          />
+          <div className="flex items-center gap-1">
+            {canReply && (
+              <SendDialog
+                emailId={emailId}
+                fromAddress={fromAddress}
+                replyToAddress={message.from_address}
+                initialSubject={replySubject}
+                triggerLabel={t("reply")}
+                triggerIcon={<Reply className="h-4 w-4" />}
+                triggerClassName="hidden sm:inline"
+                onSendSuccess={onSendSuccess}
+              />
+            )}
+            <ShareMessageDialog
+              emailId={emailId}
+              messageId={message.id}
+              messageSubject={message.subject}
+              trigger={
+                <button className="p-1.5 hover:bg-primary/10 rounded-md transition-colors">
+                  <Share2 className="h-4 w-4 text-gray-500" />
+                </button>
+              }
+            />
+          </div>
         </div>
         <div className="text-xs text-gray-500 space-y-1">
           {message.from_address && <p>{t("from")}: {message.from_address}</p>}

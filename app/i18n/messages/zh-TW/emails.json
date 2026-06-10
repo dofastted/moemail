@@ -70,7 +70,7 @@
     "subject": "主旨",
     "subjectPlaceholder": "郵件主旨",
     "content": "內容",
-    "contentPlaceholder": "郵件內容（支援 HTML）",
+    "contentPlaceholder": "郵件內容（支援 Markdown）",
     "send": "發送",
     "sending": "發送中...",
     "success": "郵件發送成功",
@@ -88,7 +88,8 @@
     "to": "收件者",
     "time": "時間",
     "htmlFormat": "HTML 格式",
-    "textFormat": "純文字格式"
+    "textFormat": "純文字格式",
+    "reply": "回覆"
   },
   "share": {
     "title": "分享郵箱",

@@ -73,7 +73,7 @@
     "subject": "제목",
     "subjectPlaceholder": "이메일 제목",
     "content": "내용",
-    "contentPlaceholder": "이메일 내용 (HTML 지원)",
+    "contentPlaceholder": "이메일 내용 (Markdown 지원)",
     "send": "보내기",
     "sending": "보내는 중...",
     "success": "이메일이 성공적으로 전송되었습니다",
@@ -91,7 +91,8 @@
     "to": "받는 사람",
     "time": "시간",
     "htmlFormat": "HTML 형식",
-    "textFormat": "일반 텍스트 형식"
+    "textFormat": "일반 텍스트 형식",
+    "reply": "답장"
   },
   "share": {
     "title": "메일함 공유",

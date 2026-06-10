@@ -6,6 +6,12 @@ import PostalMime from 'postal-mime'
 import { WEBHOOK_CONFIG } from '../app/config/webhook'
 import { EmailMessage } from '../app/lib/webhook'
 
+function formatAddress(address: { name?: string; address?: string } | undefined) {
+  if (!address?.address) return ""
+  if (!address.name) return address.address
+  return `${address.name} <${address.address}>`
+}
+
 const handleEmail = async (message: ForwardableEmailMessage, env: Env) => {
   const db = drizzle(env.DB, { schema: { messages, emails, webhooks } })
 
@@ -25,7 +31,7 @@ const handleEmail = async (message: ForwardableEmailMessage, env: Env) => {
 
     const savedMessage = await db.insert(messages).values({
       emailId: targetEmail.id,
-      fromAddress: message.from,
+      fromAddress: formatAddress(parsedMessage.from) || formatAddress(parsedMessage.sender) || message.from,
       subject: parsedMessage.subject || '(无主题)',
       content: parsedMessage.text || '',
       html: parsedMessage.html || '',

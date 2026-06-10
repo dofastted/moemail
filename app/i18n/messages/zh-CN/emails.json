@@ -73,7 +73,7 @@
     "subject": "主题",
     "subjectPlaceholder": "邮件主题",
     "content": "内容",
-    "contentPlaceholder": "邮件内容（支持 HTML）",
+    "contentPlaceholder": "邮件内容（支持 Markdown）",
     "send": "发送",
     "sending": "发送中...",
     "success": "邮件发送成功",
@@ -91,7 +91,8 @@
     "to": "收件人",
     "time": "时间",
     "htmlFormat": "HTML 格式",
-    "textFormat": "纯文本格式"
+    "textFormat": "纯文本格式",
+    "reply": "回复"
   },
   "share": {
     "title": "分享邮箱",
