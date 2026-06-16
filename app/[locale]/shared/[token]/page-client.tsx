@@ -62,7 +62,7 @@ export function SharedEmailPageClient({
     messagesRef.current = messages
   }, [messages])
 
-  const fetchMessages = async (cursor?: string) => {
+  const fetchMessages = async (cursor?: string, includeTotal = true) => {
     try {
       if (cursor) {
         setLoadingMore(true)
@@ -72,42 +72,47 @@ export function SharedEmailPageClient({
       if (cursor) {
         url.searchParams.set('cursor', cursor)
       }
+      if (!includeTotal) {
+        url.searchParams.set("includeTotal", "0")
+      }
 
       const messagesResponse = await fetch(url)
       if (messagesResponse.ok) {
         const messagesData = await messagesResponse.json() as {
-          messages: Message[]
-          nextCursor: string | null
-          total: number
+          messages?: Message[]
+          nextCursor?: string | null
+          total?: number | null
         }
+        const newMessages = Array.isArray(messagesData.messages) ? messagesData.messages : []
 
         if (!cursor) {
-          // 刷新时：合并新消息和旧消息，避免重复
-          const newMessages = messagesData.messages
           const oldMessages = messagesRef.current
-
-          // 找到第一个重复的消息
           const lastDuplicateIndex = newMessages.findIndex(
             newMsg => oldMessages.some(oldMsg => oldMsg.id === newMsg.id)
           )
 
           if (lastDuplicateIndex === -1) {
-            // 没有重复，直接使用新消息
             setMessages(newMessages)
-            setNextCursor(messagesData.nextCursor)
-            setTotal(messagesData.total)
+            setNextCursor(messagesData.nextCursor || null)
+            if (typeof messagesData.total === "number") {
+              setTotal(messagesData.total)
+            }
             return
           }
-          // 有重复，只添加新的消息
+
           const uniqueNewMessages = newMessages.slice(0, lastDuplicateIndex)
           setMessages([...uniqueNewMessages, ...oldMessages])
-          setTotal(messagesData.total)
+          if (typeof messagesData.total === "number") {
+            setTotal(messagesData.total)
+          }
           return
         }
-        // 加载更多：追加到列表末尾
-        setMessages(prev => [...prev, ...(messagesData.messages || [])])
-        setNextCursor(messagesData.nextCursor)
-        setTotal(messagesData.total)
+
+        setMessages(prev => [...prev, ...newMessages])
+        setNextCursor(messagesData.nextCursor || null)
+        if (typeof messagesData.total === "number") {
+          setTotal(messagesData.total)
+        }
       }
     } catch (err) {
       console.error("Failed to fetch messages:", err)
@@ -121,7 +126,7 @@ export function SharedEmailPageClient({
     stopPolling()
     pollTimeoutRef.current = setInterval(() => {
       if (!refreshing && !loadingMore) {
-        fetchMessages()
+        fetchMessages(undefined, false)
       }
     }, EMAIL_CONFIG.POLL_INTERVAL)
   }
@@ -149,7 +154,7 @@ export function SharedEmailPageClient({
 
   const handleLoadMore = () => {
     if (nextCursor && !loadingMore) {
-      fetchMessages(nextCursor)
+      fetchMessages(nextCursor, false)
     }
   }
 

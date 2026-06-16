@@ -47,9 +47,10 @@ interface MessageListProps {
 }
 
 interface MessageResponse {
-  messages: MessageListItem[]
-  nextCursor: string | null
-  total: number
+  messages?: MessageListItem[]
+  nextCursor?: string | null
+  total?: number | null
+  error?: string
 }
 
 export function MessageList({
@@ -72,14 +73,20 @@ export function MessageList({
   const [loadingMore, setLoadingMore] = useState(false)
   const [total, setTotal] = useState(preloadedMessageList?.total || 0)
   const [messageToDelete, setMessageToDelete] = useState<MessageListItem | null>(null)
+  const [listError, setListError] = useState<string | null>(null)
   const pollTimeoutRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const messagesRef = useRef<MessageListItem[]>(preloadedMessageList?.messages || [])
   const requestIdRef = useRef(0)
+  const totalRef = useRef(preloadedMessageList?.total || 0)
   const cacheKeyRef = useRef(createMessageListCacheKey(cacheUserKey, email.id, messageType))
 
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
+
+  useEffect(() => {
+    totalRef.current = total
+  }, [total])
 
   useEffect(() => {
     cacheKeyRef.current = createMessageListCacheKey(cacheUserKey, email.id, messageType)
@@ -118,16 +125,20 @@ export function MessageList({
     return merged
   }
 
-  const fetchMessages = async (cursor?: string | null, reset = false) => {
+  const fetchMessages = async (cursor?: string | null, reset = false, includeTotal = true) => {
     const requestId = ++requestIdRef.current
 
     try {
+      setListError(null)
       const url = new URL(`/api/emails/${email.id}`, window.location.origin)
       if (messageType === "sent") {
         url.searchParams.set("type", "sent")
       }
       if (cursor) {
         url.searchParams.set("cursor", cursor)
+      }
+      if (!includeTotal) {
+        url.searchParams.set("includeTotal", "0")
       }
 
       const response = await fetch(url)
@@ -137,13 +148,27 @@ export function MessageList({
         return
       }
 
-      const mergedMessages = mergeMessages(data.messages, reset || !cursor)
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          stopPolling()
+        }
+        setListError(data.error || t("loadError"))
+        return
+      }
+
+      const incomingMessages = Array.isArray(data.messages) ? data.messages : []
+      const mergedMessages = mergeMessages(incomingMessages, reset || !cursor)
+      const nextTotal = typeof data.total === "number" ? data.total : totalRef.current
       messagesRef.current = mergedMessages
+      totalRef.current = nextTotal
       setMessages(mergedMessages)
-      setNextCursor(data.nextCursor)
-      setTotal(data.total)
-      writeCache(mergedMessages, data.nextCursor, data.total)
+      setNextCursor(data.nextCursor || null)
+      setTotal(nextTotal)
+      writeCache(mergedMessages, data.nextCursor || null, nextTotal)
     } catch (error) {
+      if (requestIdRef.current === requestId) {
+        setListError(t("networkError"))
+      }
       console.error("Failed to fetch messages:", error)
     } finally {
       if (requestIdRef.current === requestId) {
@@ -158,7 +183,7 @@ export function MessageList({
     stopPolling()
     pollTimeoutRef.current = setInterval(() => {
       if (!refreshing && !loadingMore) {
-        void fetchMessages(undefined, true)
+        void fetchMessages(undefined, true, false)
       }
     }, EMAIL_CONFIG.POLL_INTERVAL)
   }
@@ -177,8 +202,7 @@ export function MessageList({
     const remainingScroll = scrollHeight - scrollTop
 
     if (remainingScroll <= threshold) {
-      setLoadingMore(true)
-      void fetchMessages(nextCursor, false)
+      void fetchMessages(nextCursor, false, false)
     }
   }, 200)
 
@@ -233,10 +257,11 @@ export function MessageList({
       setMessages(cached.messages)
       setNextCursor(cached.nextCursor)
       setTotal(cached.total)
+      totalRef.current = cached.total
       setLoading(false)
       if (isMessageListCacheFresh(cached)) {
         startPolling()
-        void fetchMessages(undefined, true)
+        void fetchMessages(undefined, true, false)
         return () => stopPolling()
       }
     }
@@ -248,7 +273,7 @@ export function MessageList({
     messagesRef.current = preloadedMessageList?.messages || []
     setNextCursor(preloadedMessageList?.nextCursor || null)
     setTotal(preloadedMessageList?.total || 0)
-    void fetchMessages(undefined, true)
+    void fetchMessages(undefined, true, true)
     startPolling()
 
     return () => stopPolling()
@@ -257,8 +282,7 @@ export function MessageList({
 
   useEffect(() => {
     if (refreshTrigger && refreshTrigger > 0) {
-      setRefreshing(true)
-      void fetchMessages(undefined, true)
+      void fetchMessages(undefined, true, true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshTrigger])
@@ -284,6 +308,8 @@ export function MessageList({
         <div className="flex-1 overflow-auto" onScroll={handleScroll}>
           {loading ? (
             <div className="p-4 text-center text-sm text-gray-500">{t("loading")}</div>
+          ) : listError ? (
+            <div className="p-4 text-center text-sm text-destructive">{listError}</div>
           ) : messages.length > 0 ? (
             <div className="divide-y divide-primary/10">
               {messages.map(message => (

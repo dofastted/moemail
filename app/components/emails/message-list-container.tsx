@@ -44,26 +44,30 @@ export function MessageListContainer({ email, onMessageSelect, selectedMessageId
               </SlidingTabsTrigger>
             </SlidingTabsList>
           </div>
-          
+
           <TabsContent value="received" className="flex-1 overflow-hidden m-0">
-            <MessageList
-              email={email}
-              messageType="received"
-              onMessageSelect={onMessageSelect}
-              selectedMessageId={selectedMessageId}
-              cacheUserKey={cacheUserKey}
-            />
+            {activeTab === "received" && (
+              <MessageList
+                email={email}
+                messageType="received"
+                onMessageSelect={onMessageSelect}
+                selectedMessageId={selectedMessageId}
+                cacheUserKey={cacheUserKey}
+              />
+            )}
           </TabsContent>
-          
+
           <TabsContent value="sent" className="flex-1 overflow-hidden m-0">
-            <MessageList
-              email={email}
-              messageType="sent"
-              onMessageSelect={onMessageSelect}
-              selectedMessageId={selectedMessageId}
-              refreshTrigger={refreshTrigger}
-              cacheUserKey={cacheUserKey}
-            />
+            {activeTab === "sent" && (
+              <MessageList
+                email={email}
+                messageType="sent"
+                onMessageSelect={onMessageSelect}
+                selectedMessageId={selectedMessageId}
+                refreshTrigger={refreshTrigger}
+                cacheUserKey={cacheUserKey}
+              />
+            )}
           </TabsContent>
         </Tabs>
       ) : (

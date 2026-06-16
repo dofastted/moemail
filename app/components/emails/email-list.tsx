@@ -177,31 +177,30 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
     })
   }, [cacheKey])
 
-  const prefetchEmails = useCallback(async (startCursor: string | null, requestId: number) => {
-    let currentCursor = startCursor
+  const prefetchNextEmailPage = useCallback(async (startCursor: string | null, requestId: number) => {
+    if (!startCursor || requestIdRef.current !== requestId) {
+      return
+    }
 
-    while (currentCursor && requestIdRef.current === requestId) {
-      try {
-        const url = buildUrl(currentCursor, false)
-        const response = await fetch(url)
-        const data = await response.json() as EmailResponse
+    try {
+      const url = buildUrl(startCursor, false)
+      const response = await fetch(url)
+      const data = await response.json() as EmailResponse
 
-        if (requestIdRef.current !== requestId) {
-          return
-        }
-
-        const merged = mergeEmails(emailsRef.current, data.emails)
-        emailsRef.current = merged
-        setEmails(merged)
-        nextCursorRef.current = data.nextCursor
-        setNextCursor(data.nextCursor)
-        saveCache(merged, data.nextCursor, totalRef.current)
-        currentCursor = data.nextCursor
-      } catch (error) {
-        if (requestIdRef.current === requestId) {
-          console.error("Failed to prefetch emails:", error)
-        }
+      if (requestIdRef.current !== requestId || !response.ok) {
         return
+      }
+
+      const incomingEmails = Array.isArray(data.emails) ? data.emails : []
+      const merged = mergeEmails(emailsRef.current, incomingEmails)
+      emailsRef.current = merged
+      setEmails(merged)
+      nextCursorRef.current = data.nextCursor || null
+      setNextCursor(data.nextCursor || null)
+      saveCache(merged, data.nextCursor || null, totalRef.current)
+    } catch (error) {
+      if (requestIdRef.current === requestId) {
+        console.error("Failed to prefetch emails:", error)
       }
     }
   }, [buildUrl, saveCache])
@@ -245,21 +244,26 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
         return
       }
 
-      const merged = mergeEmails(emailsRef.current, data.emails, reset && !preserveExisting)
+      if (!response.ok) {
+        throw new Error((data as { error?: string }).error || t("error"))
+      }
+
+      const incomingEmails = Array.isArray(data.emails) ? data.emails : []
+      const merged = mergeEmails(emailsRef.current, incomingEmails, reset && !preserveExisting)
       emailsRef.current = merged
       setEmails(merged)
-      nextCursorRef.current = data.nextCursor
-      setNextCursor(data.nextCursor)
+      nextCursorRef.current = data.nextCursor || null
+      setNextCursor(data.nextCursor || null)
       let nextTotal = totalRef.current
       if (typeof data.total === "number") {
         nextTotal = data.total
         totalRef.current = data.total
         setTotal(data.total)
       }
-      saveCache(merged, data.nextCursor, nextTotal)
+      saveCache(merged, data.nextCursor || null, nextTotal)
 
       if (prefetch && !cursor && data.hasMore && data.nextCursor) {
-        void prefetchEmails(data.nextCursor, requestId)
+        void prefetchNextEmailPage(data.nextCursor, requestId)
       }
     } catch (error) {
       if (requestIdRef.current === requestId) {
@@ -273,7 +277,7 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
         setLoadingMore(false)
       }
     }
-  }, [buildUrl, prefetchEmails, saveCache, t])
+  }, [buildUrl, prefetchNextEmailPage, saveCache, t])
 
   const clearSearch = useCallback(() => {
     setSearchText(DEFAULT_SEARCH)
@@ -321,7 +325,7 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
       const requestId = ++requestIdRef.current
       if (Date.now() - cached.savedAt < EMAIL_LIST_CACHE_REFRESH_INTERVAL) {
         if (cached.nextCursor) {
-          void prefetchEmails(cached.nextCursor, requestId)
+          void prefetchNextEmailPage(cached.nextCursor, requestId)
         }
         return
       }
@@ -333,7 +337,7 @@ export function EmailList({ onEmailSelect, selectedEmailId }: EmailListProps) {
       prefetch: true,
       preserveExisting: Boolean(cached),
     })
-  }, [cacheKey, fetchEmails, prefetchEmails, session])
+  }, [cacheKey, fetchEmails, prefetchNextEmailPage, session])
 
   const handleDelete = async (email: Email) => {
     try {

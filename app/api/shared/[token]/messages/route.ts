@@ -17,6 +17,7 @@ export async function GET(
   const db = createDb()
   const { searchParams } = new URL(request.url)
   const cursor = searchParams.get('cursor')
+  const includeTotal = searchParams.get("includeTotal") !== "0"
 
   try {
     // 验证分享token
@@ -61,11 +62,11 @@ export async function GET(
       )
     )
 
-    // 获取消息总数（只统计接收的邮件）
-    const totalResult = await db.select({ count: sql<number>`count(*)` })
-      .from(messages)
-      .where(baseConditions)
-    const totalCount = Number(totalResult[0].count)
+    const totalCount = includeTotal
+      ? Number((await db.select({ count: sql<number>`count(*)` })
+          .from(messages)
+          .where(baseConditions))[0].count)
+      : null
 
     const conditions = [baseConditions]
 

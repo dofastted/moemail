@@ -63,7 +63,9 @@
     "subject": "Subject",
     "date": "Date",
     "loading": "Loading...",
-    "loadingMore": "Loading more..."
+    "loadingMore": "Loading more...",
+    "loadError": "Failed to load messages",
+    "networkError": "Network error, please try again later"
   },
   "send": {
     "title": "Send Email",

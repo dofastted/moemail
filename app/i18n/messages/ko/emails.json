@@ -63,7 +63,9 @@
     "subject": "제목",
     "date": "날짜",
     "loading": "로딩 중...",
-    "loadingMore": "더 불러오는 중..."
+    "loadingMore": "더 불러오는 중...",
+    "loadError": "메시지 목록 로드 실패",
+    "networkError": "네트워크 오류, 나중에 다시 시도해주세요"
   },
   "send": {
     "title": "이메일 보내기",

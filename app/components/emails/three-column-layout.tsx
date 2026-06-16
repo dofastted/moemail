@@ -13,9 +13,7 @@ import { Copy } from "lucide-react"
 import { useSession } from "next-auth/react"
 import {
   createMessageCacheUserKey,
-  createMessageDetailCacheKey,
   createMessageListCacheKey,
-  writeMessageDetailCache,
   writeMessageListCache,
   type MessageListItem,
   type MessageType,
@@ -81,7 +79,7 @@ export function ThreeColumnLayout() {
 
     const preloadFirstFiveEmails = async () => {
       try {
-        const response = await fetch("/api/emails?limit=5", {
+        const response = await fetch("/api/emails?limit=5&includeTotal=0", {
           signal: abortController.signal,
         })
         if (!response.ok) {
@@ -102,45 +100,36 @@ export function ThreeColumnLayout() {
           }
           preloadedEmailsRef.current.push(email.id)
 
-          for (const messageType of ["received", "sent"] as MessageType[]) {
-            try {
-              const url = new URL(`/api/emails/${email.id}`, window.location.origin)
-              if (messageType === "sent") {
-                url.searchParams.set("type", "sent")
-              }
+          try {
+            const url = new URL(`/api/emails/${email.id}`, window.location.origin)
+            url.searchParams.set("includeTotal", "0")
 
-              const messageResponse = await fetch(url, {
-                signal: abortController.signal,
-              })
-              if (!messageResponse.ok) {
-                continue
-              }
+            const messageResponse = await fetch(url, {
+              signal: abortController.signal,
+            })
+            if (!messageResponse.ok) {
+              continue
+            }
 
-              const messageData = await messageResponse.json() as {
-                messages: MessageListItem[]
-                nextCursor: string | null
-                total: number
-              }
+            const messageData = await messageResponse.json() as {
+              messages?: MessageListItem[]
+              nextCursor?: string | null
+              total?: number | null
+            }
+            const messages = Array.isArray(messageData.messages) ? messageData.messages : []
 
-              writeMessageListCache(
-                createMessageListCacheKey(cacheUserKey, email.id, messageType),
-                {
-                  messages: messageData.messages,
-                  nextCursor: messageData.nextCursor,
-                  total: messageData.total,
-                }
-              )
+            writeMessageListCache(
+              createMessageListCacheKey(cacheUserKey, email.id, "received"),
+              {
+                messages,
+                nextCursor: messageData.nextCursor || null,
+                total: messageData.total || messages.length,
+              }
+            )
 
-              for (const message of messageData.messages.slice(0, 1)) {
-                writeMessageDetailCache(
-                  createMessageDetailCacheKey(cacheUserKey, email.id, message.id, messageType),
-                  message
-                )
-              }
-            } catch {
-              if (!abortController.signal.aborted) {
-                continue
-              }
+          } catch {
+            if (!abortController.signal.aborted) {
+              continue
             }
           }
         }
@@ -187,8 +176,8 @@ export function ThreeColumnLayout() {
                     </div>
                   </div>
                   {selectedEmail && canSendEmails && (
-                    <SendDialog 
-                      emailId={selectedEmail.id} 
+                    <SendDialog
+                      emailId={selectedEmail.id}
                       fromAddress={selectedEmail.address}
                       onSendSuccess={handleSendSuccess}
                     />
@@ -271,8 +260,8 @@ export function ThreeColumnLayout() {
                     </div>
                   </div>
                   {canSendEmails && (
-                    <SendDialog 
-                      emailId={selectedEmail.id} 
+                    <SendDialog
+                      emailId={selectedEmail.id}
                       fromAddress={selectedEmail.address}
                       onSendSuccess={handleSendSuccess}
                     />
