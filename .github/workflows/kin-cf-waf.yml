@@ -1,10 +1,10 @@
-name: kin-cf-waf-inspect-fix
+name: kin-cf-waf
 
 on:
   workflow_dispatch:
     inputs:
       apply:
-        description: "Set true to patch WAF (skip Anthropic/JS and OpenAI/JS on kin.fkcodex.com)"
+        description: "true to disable Anthropic/JS OpenAI/JS block or add skip for kin.fkcodex.com"
         required: true
         default: "false"
 
@@ -12,133 +12,92 @@ jobs:
   waf:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect and optionally patch Cloudflare WAF
+      - name: Inspect Cloudflare WAF
         env:
           CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          APPLY: ${{ inputs.apply }}
+          APPLY: ${{ github.event.inputs.apply }}
         run: |
           set -euo pipefail
-          if [ -z "${CF_TOKEN:-}" ]; then
-            echo "NO_TOKEN"
-            exit 1
-          fi
-          AUTH="Authorization: Bearer ${CF_TOKEN}"
-          echo "=== token verify ==="
-          curl -sS -H "$AUTH" -H "Content-Type: application/json" \
-            "https://api.cloudflare.com/client/v4/user/tokens/verify" | head -c 800
-          echo
-          echo "=== zones ==="
-          ZJSON=$(curl -sS -H "$AUTH" "https://api.cloudflare.com/client/v4/zones?per_page=50")
-          echo "$ZJSON" | python3 -c 'import sys,json
-d=json.load(sys.stdin)
-print("success", d.get("success"), "errors", d.get("errors"))
-for z in d.get("result") or []:
-  print(z.get("id"), z.get("name"), z.get("status"))'
-          ZONE=$(echo "$ZJSON" | python3 -c 'import sys,json
-d=json.load(sys.stdin)
-for z in d.get("result") or []:
-  if z.get("name") in ("fkcodex.com","fkcodex.com."):
-    print(z["id"]); break
-  if "fkcodex" in (z.get("name") or ""):
-    print(z["id"]); break
-')
-          echo "ZONE=$ZONE"
-          if [ -z "$ZONE" ]; then
-            echo "zone fkcodex.com not visible to this token"
-            exit 0
-          fi
-          echo "=== custom firewall entrypoint ==="
-          RS=$(curl -sS -H "$AUTH" \
-            "https://api.cloudflare.com/client/v4/zones/${ZONE}/rulesets/phases/http_request_firewall_custom/entrypoint")
-          echo "$RS" | python3 -c 'import sys,json
-d=json.load(sys.stdin)
-print("success", d.get("success"), "errors", d.get("errors"))
-r=d.get("result") or {}
-print("ruleset_id", r.get("id"), "name", r.get("name"))
-for i,rule in enumerate(r.get("rules") or []):
-  print("--- rule", i, "---")
-  print("id", rule.get("id"))
-  print("action", rule.get("action"))
-  print("enabled", rule.get("enabled"))
-  print("description", rule.get("description"))
-  print("expression", (rule.get("expression") or "")[:500])
-'
-          echo "=== managed WAF packages (legacy) ==="
-          curl -sS -H "$AUTH" \
-            "https://api.cloudflare.com/client/v4/zones/${ZONE}/firewall/waf/packages" | head -c 400
-          echo
-          echo "=== firewall rules (legacy) ==="
-          curl -sS -H "$AUTH" \
-            "https://api.cloudflare.com/client/v4/zones/${ZONE}/firewall/rules?per_page=50" | python3 -c 'import sys,json
-d=json.load(sys.stdin)
-print("success", d.get("success"), "errors", d.get("errors"))
-for r in d.get("result") or []:
-  print(r.get("id"), r.get("action"), r.get("paused"), (r.get("filter") or {}).get("expression","")[:300])
-'
-          if [ "$APPLY" != "true" ]; then
-            echo "inspect-only done"
-            exit 0
-          fi
-          echo "=== APPLY skip rule for kin.fkcodex.com SDK UAs ==="
-          # Add a high-priority skip if not present
-          python3 - << 'PY2'
-import json,os,urllib.request
-token=os.environ["CF_TOKEN"]
-zone=os.environ.get("ZONE") or open("/tmp/zone").read().strip() if False else None
-PY2
-          # Get current ruleset and POST a skip rule at the top
-          echo "$ZONE" > /tmp/zone_id
-          python3 << PY2
-import json, os, urllib.request
-token = os.environ["CF_TOKEN"]
-zone = open("/tmp/zone_id").read().strip()
-auth = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+          test -n "${CF_TOKEN:-}" || { echo NO_TOKEN; exit 1; }
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error
+          token = os.environ["CF_TOKEN"]
+          apply = os.environ.get("APPLY", "false") == "true"
 
-def cf(method, path, body=None):
-    req = urllib.request.Request(
-        f"https://api.cloudflare.com/client/v4{path}",
-        data=None if body is None else json.dumps(body).encode(),
-        headers=auth, method=method)
-    with urllib.request.urlopen(req) as resp:
-        return json.load(resp)
+          def cf(method, path, body=None):
+              data = None if body is None else json.dumps(body).encode()
+              req = urllib.request.Request(
+                  "https://api.cloudflare.com/client/v4" + path,
+                  data=data,
+                  headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+                  method=method,
+              )
+              try:
+                  with urllib.request.urlopen(req) as resp:
+                      return json.load(resp)
+              except urllib.error.HTTPError as e:
+                  raw = e.read().decode()
+                  print("HTTP", e.code, path, raw[:800])
+                  try:
+                      return json.loads(raw)
+                  except Exception:
+                      return {"success": False, "errors": [raw[:200]]}
 
-rs = cf("GET", f"/zones/{zone}/rulesets/phases/http_request_firewall_custom/entrypoint")
-ruleset = rs.get("result") or {}
-rules = ruleset.get("rules") or []
-print("existing custom rules:", len(rules))
-# Look for existing skip
-for r in rules:
-    expr = r.get("expression") or ""
-    if "kin.fkcodex.com" in expr and r.get("action") == "skip":
-        print("skip already present", r.get("id"), expr)
-        break
-else:
-    # Prepend skip for API host
-    new_rule = {
-        "action": "skip",
-        "action_parameters": {"ruleset": "current"},
-        "description": "Allow Pi/Codex official SDK UAs on kin.fkcodex.com API",
-        "enabled": True,
-        "expression": '(http.host eq "kin.fkcodex.com")',
-    }
-    # Also consider disabling rules that match Anthropic/JS
-    patched = False
-    for r in rules:
-        expr = (r.get("expression") or "")
-        if "Anthropic/JS" in expr or "OpenAI/JS" in expr or "anthropic/js" in expr.lower():
-            print("FOUND blocking rule", r.get("id"), r.get("action"), expr)
-            # disable rather than delete
-            try:
-                out = cf("PATCH", f"/zones/{zone}/rulesets/{ruleset['id']}/rules/{r['id']}", {"enabled": False})
-                print("disabled", r["id"], out.get("success"), out.get("errors"))
-                patched = True
-            except Exception as e:
-                print("patch failed", e)
-    if not patched:
-        try:
-            out = cf("POST", f"/zones/{zone}/rulesets/{ruleset['id']}/rules", new_rule)
-            print("added skip", out.get("success"), out.get("errors"))
-        except Exception as e:
-            print("add skip failed", e)
-print("apply done")
-PY2
+          v = cf("GET", "/user/tokens/verify")
+          print("verify", v.get("success"), v.get("result") or v.get("errors"))
+
+          zones = cf("GET", "/zones?per_page=50")
+          print("zones.success", zones.get("success"), zones.get("errors"))
+          zone_id = None
+          for z in zones.get("result") or []:
+              print("zone", z.get("name"), z.get("id"), z.get("status"))
+              if "fkcodex" in (z.get("name") or ""):
+                  zone_id = z["id"]
+          if not zone_id:
+              print("fkcodex.com not visible to this token")
+              raise SystemExit(0)
+
+          rs = cf("GET", f"/zones/{zone_id}/rulesets/phases/http_request_firewall_custom/entrypoint")
+          print("custom.success", rs.get("success"), rs.get("errors"))
+          result = rs.get("result") or {}
+          print("ruleset", result.get("id"), result.get("name"))
+          hit_ids = []
+          for i, rule in enumerate(result.get("rules") or []):
+              expr = rule.get("expression") or ""
+              print(f"RULE[{i}] id={rule.get('id')} action={rule.get('action')} enabled={rule.get('enabled')} desc={rule.get('description')}")
+              print("  expr:", expr[:600])
+              low = expr.lower()
+              if "anthropic/js" in low or "openai/js" in low:
+                  hit_ids.append(rule)
+
+          fw = cf("GET", f"/zones/{zone_id}/firewall/rules?per_page=50")
+          print("legacy.success", fw.get("success"), fw.get("errors"))
+          for r in fw.get("result") or []:
+              expr = ((r.get("filter") or {}).get("expression")) or ""
+              print("LEGACY", r.get("id"), r.get("action"), r.get("paused"), expr[:400])
+
+          if not apply:
+              print("inspect-only complete; hits", [h.get("id") for h in hit_ids])
+              raise SystemExit(0)
+
+          ruleset_id = result.get("id")
+          if not ruleset_id:
+              print("no custom ruleset to patch")
+              raise SystemExit(0)
+
+          if hit_ids:
+              for h in hit_ids:
+                  out = cf("PATCH", f"/zones/{zone_id}/rulesets/{ruleset_id}/rules/{h['id']}", {"enabled": False})
+                  print("disabled", h.get("id"), out.get("success"), out.get("errors"))
+          else:
+              body = {
+                  "action": "skip",
+                  "action_parameters": {"ruleset": "current"},
+                  "description": "Allow coding-agent SDK UAs on kin.fkcodex.com",
+                  "enabled": True,
+                  "expression": '(http.host eq "kin.fkcodex.com")',
+              }
+              out = cf("POST", f"/zones/{zone_id}/rulesets/{ruleset_id}/rules", body)
+              print("added skip", out.get("success"), out.get("errors"))
+          print("apply complete")
+          PY
